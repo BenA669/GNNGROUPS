@@ -17,3 +17,4 @@ class GCN(torch.nn.Module):
         x = self.gc2(x, adj)
 
         return F.log_softmax(x, dim=1)
+        

@@ -31,7 +31,7 @@ def makePlot(data, num_groups, adjacency_matrix, node_positions):
     # Show plot
     plt.show()
 
-def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.8, nodeNeighborStdDev=0.1, connectedThreshold=0.05, intra_group_prob=0.6, inter_group_prob=0.01):
+def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.8, nodeNeighborStdDev=0.1, connectedThreshold=0.05, intra_group_prob=0.8, inter_group_prob=0.01):
     rng = np.random.default_rng() # Generates different Seed every time
     nodePerGroup = int(nodeAmount/groupsAmount)
 
@@ -87,11 +87,11 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
             # Calculate the Euclidean distance between nodes i and j
             distance = np.linalg.norm(all_nodes[i] - all_nodes[j])
 
-            if distance <= connectedThreshold:
-                # Assign higher probability if nodes are in the same group, otherwise lower probability
-                adjacency_matrix[i, j] = 1
-                adjacency_matrix[j, i] = 1  # Symmetric matrix
-                continue
+            # if distance <= connectedThreshold:
+            #     # Assign higher probability if nodes are in the same group, otherwise lower probability
+            #     adjacency_matrix[i, j] = 1
+            #     adjacency_matrix[j, i] = 1  # Symmetric matrix
+            #     continue
 
             if group_i == group_j:
                 prob = intra_group_prob
@@ -110,17 +110,21 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
     labels = torch.from_numpy(labels).long()
     adjacency_matrix = torch.from_numpy(adjacency_matrix)
 
-    # shuffle_indices = torch.randperm(all_nodes.size(0))
-    # shuffled_all_nodes = all_nodes[shuffle_indices]
-    # shuffled_labels = labels[shuffle_indices]
+    shuffle_indices = torch.randperm(all_nodes.size(0))
+    shuffled_all_nodes = all_nodes[shuffle_indices]
+    shuffled_labels = labels[shuffle_indices]
+
+    shuffled_adj = adjacency_matrix[shuffle_indices][:, shuffle_indices]
     
-   
-    # return torch.from_numpy(data), adjacency_matrix, shuffled_all_nodes, shuffled_labels
-    return torch.from_numpy(data), adjacency_matrix, all_nodes, labels
+    # print(adjacency_matrix)
+    # print(shuffled_adj)
+    return torch.from_numpy(data), shuffled_adj, shuffled_all_nodes, shuffled_labels
+    # return torch.from_numpy(data), adjacency_matrix, all_nodes, labels
 
     
 
 
 if __name__ == "__main__":
-    data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
+    # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
+    data, adj, all_nodes, labels = makeDataSet(nodeAmount=100)
     makePlot(data, 2, adj, all_nodes)

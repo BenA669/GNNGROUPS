@@ -31,7 +31,7 @@ def makePlot(data, num_groups, adjacency_matrix, node_positions):
     # Show plot
     plt.show()
 
-def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.8, nodeNeighborStdDev=0.1, connectedThreshold=0.05, intra_group_prob=0.8, inter_group_prob=0.01):
+def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.95, nodeNeighborStdDev=0.05, connectedThreshold=0.05, intra_group_prob=0.2, inter_group_prob=0.005):
     rng = np.random.default_rng() # Generates different Seed every time
     nodePerGroup = int(nodeAmount/groupsAmount)
 
@@ -127,4 +127,5 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
 if __name__ == "__main__":
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
     data, adj, all_nodes, labels = makeDataSet(nodeAmount=100)
+
     makePlot(data, 2, adj, all_nodes)

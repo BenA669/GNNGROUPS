@@ -1,13 +1,13 @@
 import torch
 from model import GCN
-from makeDataset import makeDataSet, makePlot
+from makeDataset import makeDataSet, makePlot, makePlotWithErrors
 import statistics
-
+from tqdm import tqdm
 
 def eval(model, amt):
     accTotal = []
     model.eval()
-    for i in range(0, amt):
+    for i in tqdm(range(0, amt)):
         data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
         output = model(all_nodes.float(), adj.float())
         _, predicted_labels = torch.max(output, 1)
@@ -31,7 +31,8 @@ if __name__ == '__main__':
 
     sumA = 0
     # Evaluate the model
-    for i in range(0, 100):
+    iterations = 500
+    for i in tqdm(range(0, iterations)):
         data, adj, all_nodes, labels = makeDataSet(groupsAmount=2,  nodeAmount=100)
         with torch.no_grad():
             output = model(all_nodes.float(), adj.float())
@@ -47,9 +48,10 @@ if __name__ == '__main__':
     print("Predicted Labels:", predicted_labels)
     print("True Labels:", labels)
 
-    print("Performance: {}".format(sumA/100))
+    print("Performance: {}".format(sumA/iterations))
 
     # Plot results
+    # makePlotWithErrors(data, 2, adj, all_nodes, labels, predicted_labels)
     makePlot(data, 2, adj, all_nodes)
 
     #70 ish

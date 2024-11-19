@@ -1,4 +1,4 @@
-from makeDataset import makeDataSet, makePlot
+from makeDataset import makeDataSet, makePlot, makePlotWithErrors
 from model import GCN
 from evaluate import eval
 import torch
@@ -57,10 +57,10 @@ def cooka(output, labels):
 optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=5e-4)
 
 # Training loop
-epochs =   500000
+epochs =   6000
 epochUpd = 1000
 current_patience = 0
-patience = 1000
+patience = 500
 max_accuracy = 90.0
 
 previous_losses  = [] 
@@ -97,6 +97,7 @@ for epoch in range(epochs):
         print(f'Epoch {epoch}, Loss Average: {statistics.mean(previous_losses)}')
         if (len(stagAvg) != 0):
             print(f'TTS Average: {statistics.mean(stagAvg)}')
+        print("Evaluation: {}".format(eval(model, 100)))
         # print(stagAvg)
         # print(eval(model, 10))
         # print(f'Accuracy: {accuracy:.2f}%')
@@ -139,6 +140,8 @@ print("Model saved as 'gcn_model.pth'")
 # Visualization of results
 _, predicted_labels = torch.max(output, 1)
 
+print("Evaluation: {}".format(eval(model, 100)))
+
 # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
 model.eval()
 with torch.no_grad():
@@ -156,5 +159,6 @@ print(f'Accuracy: {accuracy:.2f}%')
 
 print(predicted_labels)
 print(labels)
+# makePlotWithErrors(data, 2, adj, all_nodes, labels, predicted_labels)
 makePlot(data, 2, adj, all_nodes)
 

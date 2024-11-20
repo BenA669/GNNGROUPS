@@ -1,8 +1,9 @@
 import torch
 from model import GCN
-from makeDataset import makeDataSet, makePlot, makePlotWithErrors
+from makeDataset import makeDataSet, plot_dataset
 import statistics
 from tqdm import tqdm
+import argparse
 
 def eval(model, amt):
     accTotal = []
@@ -22,18 +23,27 @@ def eval(model, amt):
 
 # Load data
 if __name__ == '__main__':
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Evaluate GCN model.')
+    parser.add_argument('--i', type=int, default=1000, help='Number of iterations for evaluation')
+    parser.add_argument('--m', type=str, default=1000, help='Model')
+    args = parser.parse_args()
 
     # Load the model
-    model = GCN(2, 16, 2)
-    model.load_state_dict(torch.load('gcn_model.pth'))
+    model = GCN(2, 32, 2)
+    model.load_state_dict(torch.load(args.m))
+    # model.load_state_dict(torch.load('gcn_model.pth'))
     model.eval()
     print("Model loaded successfully.")
 
     sumA = 0
     # Evaluate the model
-    iterations = 500
+    iterations = args.i
+    graphs = torch.load('pregenerated_graphs.pt')
+
     for i in tqdm(range(0, iterations)):
-        data, adj, all_nodes, labels = makeDataSet(groupsAmount=2,  nodeAmount=100)
+        data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=100)
+        # data, adj, all_nodes, labels = graphs[i]
         with torch.no_grad():
             output = model(all_nodes.float(), adj.float())
             _, predicted_labels = torch.max(output, 1)
@@ -51,7 +61,10 @@ if __name__ == '__main__':
     print("Performance: {}".format(sumA/iterations))
 
     # Plot results
-    # makePlotWithErrors(data, 2, adj, all_nodes, labels, predicted_labels)
-    makePlot(data, 2, adj, all_nodes)
+    if (predicted_labels == labels).sum().item() > (predicted_labels == 1 - labels).sum().item():
+        plot_dataset(data, 2, adj, all_nodes, labels, predicted_labels)
+    else:
+        plot_dataset(data, 2, adj, all_nodes, labels, 1 - predicted_labels)
+    # makePlot(data, 2, adj, all_nodes)
 
     #70 ish

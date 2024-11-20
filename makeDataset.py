@@ -1,81 +1,57 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import networkx as nx
 
-def makePlotWithErrors(data, num_groups, adjacency_matrix, node_positions, true_labels, predicted_labels):
-    colors = plt.cm.get_cmap('tab10', num_groups)
-    plt.figure(figsize=(7, 7))
+# Convert tensors to numpy for plotting
+def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels, predicted_labels=None):
+    data = data.numpy()
+    adjacency_matrix = adjacency_matrix.numpy()
+    node_positions = node_positions.numpy()
+    true_labels = true_labels.numpy()
+    if predicted_labels is not None:
+        predicted_labels = predicted_labels.numpy()
 
-    # Draw edges first based on adjacency matrix
-    node_count = len(node_positions)
-    for i in range(node_count):
-        for j in range(i + 1, node_count):
+    # Create a NetworkX graph from the adjacency matrix
+    G = nx.Graph()
+    for i in range(len(node_positions)):
+        G.add_node(i, pos=node_positions[i])
+
+    for i in range(len(adjacency_matrix)):
+        for j in range(i + 1, len(adjacency_matrix)):
             if adjacency_matrix[i, j] == 1:
-                plt.plot(
-                    [node_positions[i, 0], node_positions[j, 0]],
-                    [node_positions[i, 1], node_positions[j, 1]],
-                    'gray', linewidth=0.5, alpha=0.3
-                )
+                G.add_edge(i, j)
 
-    for group_idx in range(num_groups):
-        group_points = data[group_idx]
-        group_true_labels = true_labels[group_idx * len(group_points):(group_idx + 1) * len(group_points)]
-        group_predicted_labels = predicted_labels[group_idx * len(group_points):(group_idx + 1) * len(group_points)]
-
-        # Plot all nodes except the seed node
-        for i, (point, true_label, predicted_label) in enumerate(zip(group_points[1:], group_true_labels[1:], group_predicted_labels[1:])):
-            if true_label == predicted_label:
-                plt.scatter(point[0], point[1], color=colors(group_idx), label=f'Group {group_idx + 1}' if i == 0 else "")
-            else:
-                plt.scatter(point[0], point[1], color='red', label='Incorrect' if i == 0 else "")
-
-        # Plot the seed node with a different color or marker
-        plt.scatter(group_points[0, 0], group_points[0, 1], color='black', label=f'Seed {group_idx + 1}')
-
-    # Adding labels, legend, and title
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.title(f'Visualization of Points from {num_groups} Groups with Errors Highlighted')
-    plt.legend()
-    plt.grid(True)
-
-    # Show plot
-    plt.show()
+    pos = {i: node_positions[i] for i in range(len(node_positions))}
     
-def makePlot(data, num_groups, adjacency_matrix, node_positions):
-    colors = plt.cm.get_cmap('tab10', num_groups)
-    plt.figure(figsize=(7, 7))
+    # Set up the plot
+    plt.figure(figsize=(10, 10))
+    plt.title("Scatter Plot with Incorrect Labels Highlighted")
 
-     # Draw edges first based on adjacency matrix
-    node_count = len(node_positions)
-    for i in range(node_count):
-        for j in range(i + 1, node_count):
-            if adjacency_matrix[i, j] == 1:
-                plt.plot(
-                    [node_positions[i, 0], node_positions[j, 0]],
-                    [node_positions[i, 1], node_positions[j, 1]],
-                    'gray', linewidth=0.5, alpha=0.3
-                )
+    # Plot nodes based on true labels
+    colors = ['blue', 'green', 'orange', 'purple', 'brown', 'pink', 'grey', 'cyan'][:num_groups]
+    for group in range(num_groups):
+        group_nodes = [i for i in range(len(true_labels)) if true_labels[i] == group]
+        group_positions = node_positions[group_nodes]
+        plt.scatter(group_positions[:, 0], group_positions[:, 1], label=f"Group {group}", alpha=0.8, color=colors[group])
 
-    for group_idx in range(num_groups):
-        group_points = data[group_idx]
-        # Plot all nodes except the seed node
-        plt.scatter(group_points[1:, 0], group_points[1:, 1], color=colors(group_idx), label=f'Group {group_idx + 1}')
-        # Plot the seed node with a different color or marker
-        plt.scatter(group_points[0, 0], group_points[0, 1], color='black', label=f'Seed {group_idx + 1}')
+    # Overlay incorrect labels in transparent red
+    if (predicted_labels is not None):
+        incorrect_nodes = [i for i in range(len(predicted_labels)) if predicted_labels[i] != true_labels[i]]
+        if len(incorrect_nodes) > 0:
+            incorrect_positions = node_positions[incorrect_nodes]
+            plt.scatter(incorrect_positions[:, 0], incorrect_positions[:, 1], color='red', alpha=0.2, s=100, label='Incorrect Predictions')
 
-    # Adding labels, legend, and title
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.title(f'Visualization of Points from {num_groups} Groups')
+    # Plot the edges
+    nx.draw_networkx_edges(G, pos, alpha=0.1, edge_color='gray')
+
+    # Plot settings
+    plt.xlabel("Dimension 1")
+    plt.ylabel("Dimension 2")
     plt.legend()
-    plt.grid(True)
-
-    # Show plot
     plt.show()
 
-
-def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.95, nodeNeighborStdDev=0.1, connectedThreshold=0.05, intra_group_prob=0.08, inter_group_prob=0.005, repulsion_factor=0.2):
+def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
     rng = np.random.default_rng()  # Generates different Seed every time
     nodePerGroup = int(nodeAmount / groupsAmount)
 
@@ -145,16 +121,16 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
             # Calculate the Euclidean distance between nodes i and j
             distance = np.linalg.norm(all_nodes[i] - all_nodes[j])
 
-            if distance <= connectedThreshold:
-                # Assign higher probability if nodes are in the same group, otherwise lower probability
-                adjacency_matrix[i, j] = 1
-                adjacency_matrix[j, i] = 1  # Symmetric matrix
-                continue
+            
 
             if group_i == group_j:
                 prob = intra_group_prob / (1 + distance)  # Decrease probability with distance
             else:
                 prob = inter_group_prob / (1 + distance)  # Decrease probability with distance
+            
+            if distance <= connectedThreshold:
+                # Assign higher probability if nodes are in the same group, otherwise lower probability
+                prob *= 2
 
             # Determine if the nodes should be connected
             if rng.random() < prob:
@@ -186,4 +162,4 @@ if __name__ == "__main__":
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
     data, adj, all_nodes, labels = makeDataSet(nodeAmount=100)
 
-    makePlot(data, 2, adj, all_nodes)
+    plot_dataset(data, 2, adj, all_nodes, labels)

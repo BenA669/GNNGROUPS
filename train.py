@@ -1,66 +1,43 @@
-from makeDataset import makeDataSet, makePlot, makePlotWithErrors
+from makeDataset import makeDataSet, plot_dataset
 from model import GCN
 from evaluate import eval
+from genGraphs import generate_and_save_graphs
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
 import statistics
+import os.path
 
 
-# Load data
-nodeAmount = 100
-data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=nodeAmount)
+if (os.path.isfile("pregenerated_graphs.pt")):
+    graphs = torch.load('pregenerated_graphs.pt')
+else:
+    print("No preGenGraphs found, generating... ")
+    generate_and_save_graphs()
 
-# print(all_nodes)
-# print(labels)
 
 # Initialize model, criterion, and optimizer
-model = GCN(2, 16, 2)
+lr = 0.00001
+model = GCN(2, 32, 2)
 criterion = torch.nn.CrossEntropyLoss()
-test = torch.zeros(nodeAmount, dtype=torch.int64)
 def permutation_invariant_loss(output, labels):
     loss_a = F.cross_entropy(output, labels)
     loss_b = F.cross_entropy(output, 1 - labels)
-    # print(torch.min(loss_a, loss_b))
-    # print(labels)
-    # print(1-labels)
-    # print(predicted_labels)
-    # print(1- predicted_labels)
-    # print(test)
-
     return torch.min(loss_a, loss_b)
+optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
 
-def cooka(output, labels):
-    # print(labels)
-    # print(torch.nonzero(labels == 1))
-    output1 = output[torch.nonzero(labels == 1)]
-    output2 = output[torch.nonzero(labels == 0)]
-    # print(output1)
-    # print(output2)
-    calCLoss = (1 - abs(torch.sub(output1, output2)))**2
-    loss = calCLoss.mean()
-
-    # print (output)
-    # print()
-    # print (output1)
-    # print ()
-    # print (output2)
-    # print()
-    # print(loss)
-    # print()
-    loss = 2
-    # print(loss)
-    # print("LOSS^")
-    return loss
-
-
-optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=5e-4)
+# Add a learning rate scheduler
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
 
 # Training loop
-epochs =   6000
+epochs = 20000
 epochUpd = 1000
+
+batch_size = 10
+
 current_patience = 0
 patience = 500
+
 max_accuracy = 90.0
 
 previous_losses  = [] 
@@ -68,97 +45,40 @@ loss_stagnation_threshold  = 50
 timeToStag = 0
 stagAvg = []
 stagAvg_threshold = 15
-# print(model(all_nodes.float(), adj.float()))
+
 for epoch in range(epochs):
     model.train()
     optimizer.zero_grad()
-    output = model(all_nodes.float(), adj.float())
-    # loss = criterion(output, labels)
-    loss = permutation_invariant_loss(output, labels)
-    # loss = cooka(output, labels)
-    loss.backward()
+
+    # Load a batch of graphs
+    batch_start = (epoch * batch_size) % len(graphs)
+    batch_end = batch_start + batch_size
+    batch_graphs = graphs[batch_start:batch_end]
     
+    # Find loss for batch of graphs
+    batch_loss = 0
+    for data, adj, all_nodes, labels in batch_graphs:
+        output = model(all_nodes.float(), adj.float())
+        loss = permutation_invariant_loss(output, labels)
+        loss.backward()
+        batch_loss += loss.item()
+    
+    # Update weights
     optimizer.step()
 
-    previous_losses.append(loss.item())
+    # Step the scheduler
+    scheduler.step()
+
+    # Record average batch loss
+    batch_loss /= batch_size
+    previous_losses.append(batch_loss)
     if len(previous_losses) > loss_stagnation_threshold:
         previous_losses.pop(0)
 
-    _, predicted_labels = torch.max(output, 1)
-    correct_predictions = max((predicted_labels == labels).sum().item(), (predicted_labels == 1 - labels).sum().item())
-    total_predictions = labels.size(0)
-    accuracy = (correct_predictions / total_predictions) * 100
-
-    # print(accuracy)
-
     if epoch % epochUpd == 0:
-        # print(f'Epoch {epoch}, Loss: {loss.item()}')
-        # print(f'Epoch {epoch}, Loss Average: {statistics.mean(previous_losses)}')
         print(f'Epoch {epoch}, Loss Average: {statistics.mean(previous_losses)}')
-        if (len(stagAvg) != 0):
-            print(f'TTS Average: {statistics.mean(stagAvg)}')
-        print("Evaluation: {}".format(eval(model, 100)))
-        # print(stagAvg)
-        # print(eval(model, 10))
-        # print(f'Accuracy: {accuracy:.2f}%')
-        # torch.save(model.state_dict(), 'gcn_model.pth')
-        # print("Model saved as 'gcn_model.pth'")
-
-    # if accuracy > max_accuracy:
-    #     # print(f'Switching dataset because accuracy reached {accuracy:.2f}%')
-    #     data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
-    #     previous_losses = []  # Reset loss history after dataset switch
-
-    # Check for loss stagnation
-    if len(previous_losses) == loss_stagnation_threshold:
-        max_loss = max(previous_losses)
-        min_loss = min(previous_losses)
-        if max_loss - min_loss < 2e-1:  # Change threshold as needed to define stagnation
-            print(f'Switching dataset due to loss stagnation at epoch {epoch} with acc: {accuracy}')
-            data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
-            previous_losses = []  # Reset loss history after dataset switch
-            stagAvg.append(timeToStag)
-            if len(stagAvg) > stagAvg_threshold:
-                stagAvg.pop(0)
-            timeToStag = 0
-            current_patience = 0
-    
-    timeToStag += 1
-    if current_patience > patience:
-        print(f"Switching dataset because patience reached")
-        current_patience = 0
-        data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
-        timeToStag = 0
-    else:
-        current_patience += 1
+        # print("Evaluation: {}".format(eval(model, 200)))
 
 # Add this after training the model
-torch.save(model.state_dict(), 'gcn_model.pth')
-print("Model saved as 'gcn_model.pth'")
-
-
-# Visualization of results
-_, predicted_labels = torch.max(output, 1)
-
-print("Evaluation: {}".format(eval(model, 100)))
-
-# data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
-model.eval()
-with torch.no_grad():
-    output = model(all_nodes.float(), adj.float())
-    _, predicted_labels = torch.max(output, 1)
-
-# Calculate accuracy
-correct_predictions = max((predicted_labels == labels).sum().item(), (predicted_labels == 1 - labels).sum().item())
-total_predictions = labels.size(0)
-accuracy = (correct_predictions / total_predictions) * 100
-
-# print(accuracy)
-
-print(f'Accuracy: {accuracy:.2f}%')
-
-print(predicted_labels)
-print(labels)
-# makePlotWithErrors(data, 2, adj, all_nodes, labels, predicted_labels)
-makePlot(data, 2, adj, all_nodes)
-
+torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
+print("Model saved as 'gcn_model{}BatchLR{}SCHED.pth'".format(epochs, lr))

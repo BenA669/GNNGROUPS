@@ -1,3 +1,4 @@
 venv/
 _pycache_/
 ./pyvenv.cfg
+pregenerated_graphs.pt

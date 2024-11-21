@@ -65,31 +65,28 @@ def InfoNCELoss(output, labels):
     loss = loss / batch_size  # Average loss across batch
     return loss
 
-# def outputToLabels(output, labels):
+def outputToLabels(output, labels):
+    n_clusters = 2  # Set the number of clusters you expect
+    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', random_state=42)
+    predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
+    return findRightPerm(predicted_labels, labels)
 
-    
 def eval(model, amt, graphs):
-    accTotal = []
+    
     model.eval()
     # graphs = torch.load('pregenerated_graphs_validation.pt')
+
+    _, _, _, labels = graphs[0]
+    total_predictions = labels.size(0)
+    accTotal = []
     for i in tqdm(range(0, amt)):
         # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
         data, adj, all_nodes, labels = graphs[i]
         output = model(all_nodes.float(), adj.float())
         
-        n_clusters = 2  # Set the number of clusters you expect
-        spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', random_state=42)
-
-        # Fit and predict cluster labels
-        predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
-        # Find right permutation
-        predicted_labels = findRightPerm(predicted_labels, labels)
-
-        # _, predicted_labels = torch.max(output, 1)
+        predicted_labels, correct_predictions = outputToLabels(output, labels)
 
         # Calculate accuracy
-        correct_predictions = (predicted_labels == labels).sum().item()
-        total_predictions = labels.size(0)
         accuracy = (correct_predictions / total_predictions) * 100
         accTotal.append(accuracy)
 
@@ -114,24 +111,30 @@ if __name__ == '__main__':
     model.eval()
     print("Model loaded successfully.")
 
-    accTotal = []
+    
     # Evaluate the model
     iterations = args.i
+
     graphs = torch.load('pregenerated_graphs_validation.pt')
 
+    _, _, _, labels = graphs[0]
+    total_predictions = labels.size(0)
+    accTotal = []
     for i in tqdm(range(0, iterations)):
         data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=100)
         # data, adj, all_nodes, labels = graphs[i]
         with torch.no_grad():
             output = model(all_nodes.float(), adj.float())
             # _, predicted_labels = torch.max(output, 1)
-            n_clusters = 2  # Set the number of clusters you expect
-            spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
+            # n_clusters = 2  # Set the number of clusters you expect
+            # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
 
-            # Fit and predict cluster labels
-            predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
-            # Find right permutation
-            predicted_labels, correct_predictions = findRightPerm(predicted_labels, labels.numpy())
+            # # Fit and predict cluster labels
+            # predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
+            # # Find right permutation
+            # predicted_labels, correct_predictions = findRightPerm(predicted_labels, labels.numpy())
+            predicted_labels, correct_predictions = outputToLabels(output, labels)
+
         # Calculate accuracy
         total_predictions = labels.size(0)
         accuracy = (correct_predictions / total_predictions) * 100

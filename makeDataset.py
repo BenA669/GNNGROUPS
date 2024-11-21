@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -51,7 +52,7 @@ def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels
     plt.legend()
     plt.show()
 
-def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
+def makeDataSetOLD(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
     if nodeAmount % groupsAmount != 0:
         print("Node amount must be divisible by groups amount")
         return
@@ -142,6 +143,7 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
     all_nodes = torch.from_numpy(all_nodes)
     labels = torch.from_numpy(labels).long()
     adjacency_matrix = torch.from_numpy(adjacency_matrix)
+    data = torch.from_numpy(data)
 
     shuffle_indices = torch.randperm(all_nodes.size(0))
     shuffled_all_nodes = all_nodes[shuffle_indices]
@@ -151,16 +153,107 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
     
     # print(adjacency_matrix)
     # print(shuffled_adj)
-    return torch.from_numpy(data), shuffled_adj, shuffled_all_nodes, shuffled_labels
+    return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
     # return torch.from_numpy(data), adjacency_matrix, all_nodes, labels
 
+
+def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
+    rng = torch.Generator().manual_seed(torch.seed())  # Generates different seed every time
+    node_per_group = nodeAmount // groupsAmount
+
+    data = torch.zeros((groupsAmount, node_per_group, nodeDim), dtype=torch.float32)
+    outliers = []
+    all_group_averages = []
+
+    for group in range(groupsAmount):
+        if group == 0:
+            data[group, 0] = torch.rand(nodeDim, generator=rng)
+        else:
+            while True:
+                candidate_position = torch.rand(nodeDim, generator=rng)
+                min_distance = torch.min(torch.linalg.norm(candidate_position - data[:group, 0], dim=1))
+                if min_distance > repulsion_factor:
+                    data[group, 0] = candidate_position
+                    break
+
+        group_average = data[group, 0].clone()
+        
+        for node in range(1, node_per_group):
+            # Running average update every 10% of nodes
+            if node % (node_per_group // 10) == 0:
+                group_average = torch.mean(data[group, :node], dim=0)
+
+            p = torch.rand(1, generator=rng).item()
+
+            if p < nodeNeighborBaseProb:
+                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+            else:
+                outliers.append((group, node))
+                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+
+        all_group_averages.append(group_average)
+
+    # Create outliers using global average
+    average_array = torch.mean(torch.stack(all_group_averages), dim=0)
+    for group, node in outliers:
+        data[group, node] = torch.normal(mean=average_array, std=nodeNeighborStdDev, generator=rng)
+
+    # Combine all nodes into one array
+    all_nodes = data.view(nodeAmount, nodeDim)
+
+    # Create adjacency matrix based on distances and group probabilities
+    adjacency_matrix = torch.zeros((nodeAmount, nodeAmount), dtype=torch.int32)
     
+    for i in range(nodeAmount):
+        for j in range(i + 1, nodeAmount):
+            group_i = i // node_per_group
+            group_j = j // node_per_group
+
+            # Calculate the Euclidean distance between nodes i and j
+            distance = torch.linalg.norm(all_nodes[i] - all_nodes[j])
+
+            if group_i == group_j:
+                prob = intra_group_prob / (1 + distance)
+            else:
+                prob = inter_group_prob / (1 + distance)
+
+            if distance <= connectedThreshold:
+                prob *= 2
+
+            if torch.rand(1, generator=rng).item() < prob:
+                adjacency_matrix[i, j] = 1
+                adjacency_matrix[j, i] = 1  # Symmetric matrix
+
+    # Create labels
+    labels = torch.arange(groupsAmount).repeat_interleave(node_per_group)
+
+    # Shuffle nodes and their labels
+    shuffle_indices = torch.randperm(nodeAmount, generator=rng)
+    shuffled_all_nodes = all_nodes[shuffle_indices]
+    shuffled_labels = labels[shuffle_indices]
+    shuffled_adj = adjacency_matrix[shuffle_indices][:, shuffle_indices]
+
+    return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
 
 if __name__ == "__main__":
-    groupsAmount = 3
-    nodeAmount = 135
+    groupsAmount = 2
+    nodeAmount = 100
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
     data, adj, all_nodes, labels = makeDataSet(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
+    
 
+    # Time the execution of makeDataSet
+    start_time = time.time()
+    data, adj, all_nodes, labels = makeDataSet(nodeNeighborStdDev=0.2, nodeNeighborBaseProb=1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
+    makeDataSet_time = time.time() - start_time
+
+    # Time the execution of makeDataSetOLD
+    start_time = time.time()
+    data_old, adj_old, all_nodes_old, labels_old = makeDataSetOLD(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+    makeDataSetOLD_time = time.time() - start_time
+
+    # Print the execution times
+    print(f"makeDataSet execution time: {makeDataSet_time:.4f} seconds")
+    print(f"makeDataSetOLD execution time: {makeDataSetOLD_time:.4f} seconds")
     plot_dataset(data, groupsAmount, adj, all_nodes, labels)

@@ -9,7 +9,7 @@ def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels
     adjacency_matrix = adjacency_matrix.numpy()
     node_positions = node_positions.numpy()
     true_labels = true_labels.numpy()
-    if predicted_labels is not None:
+    if predicted_labels is not None and type(predicted_labels) == torch.Tensor:
         predicted_labels = predicted_labels.numpy()
 
     # Create a NetworkX graph from the adjacency matrix
@@ -52,8 +52,11 @@ def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels
     plt.show()
 
 def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
+    if nodeAmount % groupsAmount != 0:
+        print("Node amount must be divisible by groups amount")
+        return
     rng = np.random.default_rng()  # Generates different Seed every time
-    nodePerGroup = int(nodeAmount / groupsAmount)
+    nodePerGroup = int(nodeAmount // groupsAmount)
 
     data = np.zeros(shape=(groupsAmount, nodePerGroup, nodeDim), dtype=float)
     outliers = list()
@@ -96,15 +99,11 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
                     data[group, node, dim] = rng.normal(loc=groupAverage[dim], scale=nodeNeighborStdDev)
 
         allGroupAverages.append(groupAverage)
-        # Make outliers
-    # print(allGroupAverages)
+    # Make outliers
     average_array = np.mean(allGroupAverages, axis=0)
     for group in range(groupsAmount):
         for node in outliers:
-            # data[group, node] = rng.random(nodeDim)
             data[group, node] = rng.normal(loc=average_array, scale=nodeNeighborStdDev)
-        # print("Outlier Amt: {}".format(len(outliers)/nodeAmount))
-        # print("Final group average for group {} is {}".format(group, groupAverage))
 
     # Combine all nodes into one array
     all_nodes = data.reshape(nodeAmount, nodeDim)
@@ -159,7 +158,9 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
 
 
 if __name__ == "__main__":
+    groupsAmount = 3
+    nodeAmount = 135
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
-    data, adj, all_nodes, labels = makeDataSet(nodeAmount=100)
+    data, adj, all_nodes, labels = makeDataSet(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
 
-    plot_dataset(data, 2, adj, all_nodes, labels)
+    plot_dataset(data, groupsAmount, adj, all_nodes, labels)

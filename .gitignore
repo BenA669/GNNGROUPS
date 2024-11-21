@@ -1,4 +1,8 @@
 venv/
-_pycache_/
+__pycache__/
 ./pyvenv.cfg
 pregenerated_graphs.pt
+pregenerated_graphs_validation.pt
+16/
+32/
+pyvenv.cfg

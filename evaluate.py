@@ -6,9 +6,41 @@ from tqdm import tqdm
 import argparse
 import torch.nn.functional as F
 from sklearn.cluster import SpectralClustering
-from genPerm import findRightPerm
+from itertools import permutations
+
 
 # 96.3447 Acc after 10,000 iterations
+
+def generate_swapped_sequences(original_sequence):
+    # Step 1: Identify the distinct numbers in the original sequence
+    distinct_elements, _ = torch.unique(original_sequence, sorted=False, return_inverse=True)
+    
+    # Step 2: Generate all permutations of the distinct elements
+    distinct_permutations = torch.tensor(list(permutations(distinct_elements.tolist())))
+    
+    # Step 3: For each permutation, replace elements in the original list
+    swapped_sequences = []
+    for perm in distinct_permutations:
+        mapping = dict(zip(distinct_elements.tolist(), perm.tolist()))
+        swapped_sequence = torch.tensor([mapping[element.item()] for element in original_sequence])
+        swapped_sequences.append(swapped_sequence)
+    
+    return swapped_sequences
+
+
+def findRightPerm(predicted_labels, labels):
+    best_accuracy = 0.0
+    best_permutation = None
+
+    permutations = generate_swapped_sequences(predicted_labels)
+
+    for perm in permutations:
+        correct_predictions = torch.sum(perm == labels).item()
+        if correct_predictions > best_accuracy:
+            best_accuracy = correct_predictions
+            best_permutation = perm
+
+    return best_permutation, best_accuracy
 
 def findSameGroups(label, labels):
     sameGroups = []
@@ -67,14 +99,14 @@ def InfoNCELoss(output, labels):
 
 def outputToLabels(output, labels):
     n_clusters = 2  # Set the number of clusters you expect
-    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', random_state=42)
-    predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
+    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
+    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().numpy()))
     return findRightPerm(predicted_labels, labels)
 
 def eval(model, amt, graphs):
     
     model.eval()
-    # graphs = torch.load('pregenerated_graphs_validation.pt')
+    # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)
@@ -115,14 +147,14 @@ if __name__ == '__main__':
     # Evaluate the model
     iterations = args.i
 
-    graphs = torch.load('pregenerated_graphs_validation.pt')
+    graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)
     accTotal = []
     for i in tqdm(range(0, iterations)):
-        data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=100)
-        # data, adj, all_nodes, labels = graphs[i]
+        # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=100)
+        data, adj, all_nodes, labels = graphs[i]
         with torch.no_grad():
             output = model(all_nodes.float(), adj.float())
             # _, predicted_labels = torch.max(output, 1)

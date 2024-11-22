@@ -45,13 +45,18 @@ def generate_swapped_sequences(original_sequence):
 #     return best_permutation, best_accuracy
 
 def findRightPerm(predicted_labels, labels):
+    # Ensure both predicted_labels and labels are of the same type\
+    device = predicted_labels.device
+    predicted_labels = predicted_labels.long()
+    labels = labels.long()
+
     # Construct a cost matrix based on misalignment between true and predicted labels
     unique_labels = torch.unique(labels)
     cost_matrix = torch.zeros((len(unique_labels), len(unique_labels)))
 
     for i, true_label in enumerate(unique_labels):
         for j, pred_label in enumerate(unique_labels):
-            cost_matrix[i, j] = torch.sum((labels == true_label) & (predicted_labels != pred_label))
+            cost_matrix[i, j] = torch.sum((labels == true_label) & (predicted_labels != pred_label), device=device)
 
     # Solve assignment problem using Hungarian algorithm
     row_ind, col_ind = linear_sum_assignment(cost_matrix.numpy())

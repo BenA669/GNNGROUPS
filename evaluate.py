@@ -145,10 +145,9 @@ def eval(model, amt, graphs):
         data, adj, all_nodes, labels = graphs[i]
         output = model(all_nodes.float(), adj.float())
         
-        predicted_labels, correct_predictions = outputToLabels(output, labels)
+        predicted_labels, accuracy = outputToLabels(output, labels)
 
         # Calculate accuracy
-        accuracy = (correct_predictions / total_predictions) * 100
         accTotal.append(accuracy)
 
     # print(predicted_labels)
@@ -199,11 +198,10 @@ if __name__ == '__main__':
             # predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
             # # Find right permutation
             # predicted_labels, correct_predictions = findRightPerm(predicted_labels, labels.numpy())
-            predicted_labels, correct_predictions = outputToLabels(output, labels)
+            predicted_labels, accuracy = outputToLabels(output, labels)
 
         # Calculate accuracy
         total_predictions = labels.size(0)
-        accuracy = (correct_predictions / total_predictions) * 100
         accTotal.append(accuracy)
 
         if args.c:

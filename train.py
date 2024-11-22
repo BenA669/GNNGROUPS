@@ -14,6 +14,9 @@ from tqdm import tqdm
 #     print("No preGenGraphs found, generating... ")
 #     generate_and_save_graphs()
 
+# Check if GPU is available and set the device accordingly
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
 graphs_validation = torch.load('2_groups_100_nodes_pregenerated_graphs.pt')
 
@@ -24,7 +27,7 @@ input_dim = 2
 hidden_dim1 = 32
 hidden_dim2 = 5
 
-model = GCN(input_dim, hidden_dim1, hidden_dim2)
+model = GCN(input_dim, hidden_dim1, hidden_dim2).to(device)
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 # Add a learning rate scheduler
@@ -48,12 +51,14 @@ for epoch in tqdm(range(epochs)):
     batch_start = (epoch * batch_size) % len(graphs)
     batch_end = batch_start + batch_size
     batch_graphs = graphs[batch_start:batch_end]
-    
+
+    batch_graphs_on_device = [(data.to(device), adj.to(device), all_nodes.to(device), labels.to(device)) 
+                          for data, adj, all_nodes, labels in batch_graphs]
+
     # Find loss for batch of graphs
     batch_loss = 0
-    for data, adj, all_nodes, labels in batch_graphs:
+    for data, adj, all_nodes, labels in batch_graphs_on_device:
         output = model(all_nodes.float(), adj.float())
-        # loss = permutation_invariant_loss(output, labels)
         loss = InfoNCELoss(output, labels)
         loss.backward()
         batch_loss += loss.item()

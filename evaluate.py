@@ -43,60 +43,58 @@ def findRightPerm(predicted_labels, labels):
 
     return best_permutation, best_accuracy
 
-def findSameGroups(label, labels):
-    sameGroups = []
-    negGroups = []
-    for i in range(len(labels)):
-        if labels[i] == label:
-            sameGroups.append(i)
-        else:
-            negGroups.append(i)
-    return sameGroups, negGroups
+def findSameGroups(labels):
+    same_groups_mask = labels.unsqueeze(0) == labels.unsqueeze(1)
+    diff_groups_mask = ~same_groups_mask
+    return same_groups_mask, diff_groups_mask
 
 def InfoNCELoss(output, labels):
-    # Get embeddings from output
-    embeddings = output  # output is already the embeddings
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    embeddings = output
     
-    # Pick a random positive and negative example for each node
-    loss = 0
-    temperature = 0.1  # Temperature parameter for InfoNCE
+    # Get the batch size and temperature
     batch_size = embeddings.size(0)
-    # batch_size = 5
-    
+    temperature = 0.1
+
+    # Get masks for same and different groups
+    same_group_mask, diff_group_mask = findSameGroups(labels)
+
+    # Remove self similarity from same group mask
+    same_group_mask.fill_diagonal_(False)
+
+    # Calculate similarity matrix (batch_size x batch_size)
+    similarity_matrix = F.cosine_similarity(embeddings.unsqueeze(1), embeddings.unsqueeze(0), dim=-1)
+
+    # Select positive and negative examples for each anchor
+    positives = torch.zeros(batch_size, device=device)
+    negatives = torch.zeros(batch_size, device=device)
+
     for i in range(batch_size):
-        # Get same group and different group indices
-        same_group, diff_group = findSameGroups(labels[i], labels)
-        
-        # Remove self from same group
-        if i in same_group:
-            same_group.remove(i)
-            
-        # Skip if no positive examples
-        if len(same_group) == 0:
-            continue
-            
-        # Randomly select one positive and one negative example
-        pos_idx = same_group[torch.randint(0, len(same_group), (1,))]
-        neg_idx = diff_group[torch.randint(0, len(diff_group), (1,))]
-        
-        # Get anchor, positive and negative embeddings
-        anchor = embeddings[i]
-        positive = embeddings[pos_idx]
-        negative = embeddings[neg_idx]
-        
-        # Calculate similarity scores
-        pos_sim = F.cosine_similarity(anchor.unsqueeze(0), positive.unsqueeze(0))
-        neg_sim = F.cosine_similarity(anchor.unsqueeze(0), negative.unsqueeze(0))
-        
-        # InfoNCE loss calculation
-        numerator = torch.exp(pos_sim / temperature)
-        denominator = numerator + torch.exp(neg_sim / temperature)
-        loss_i = -torch.log(numerator / denominator)
-        
-        loss += loss_i
-        
-    loss = loss / batch_size  # Average loss across batch
+        # Get positive and negative indices
+        pos_indices = torch.nonzero(same_group_mask[i]).squeeze(1)
+        neg_indices = torch.nonzero(diff_group_mask[i]).squeeze(1)
+
+        if len(pos_indices) == 0:
+            continue  # Skip if no positive examples
+
+        # Randomly select a positive and negative example
+        pos_idx = pos_indices[torch.randint(0, len(pos_indices), (1,), device=device)]
+        neg_idx = neg_indices[torch.randint(0, len(neg_indices), (1,), device=device)]
+
+        # Get similarity scores for selected positive and negative
+        positives[i] = similarity_matrix[i, pos_idx]
+        negatives[i] = similarity_matrix[i, neg_idx]
+
+    # InfoNCE loss calculation
+    numerator = torch.exp(positives / temperature)
+    denominator = numerator + torch.exp(negatives / temperature)
+    loss = -torch.log(numerator / denominator)
+
+    # Average loss over batch
+    loss = loss.mean()
+
     return loss
+
 
 def outputToLabels(output, labels):
     n_clusters = 2  # Set the number of clusters you expect

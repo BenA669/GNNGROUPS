@@ -1,11 +1,11 @@
 import torch
-from makeDataset import makeDataSet, plot_dataset
+from makeDataset import makeDataSetCUDA, plot_dataset
 from tqdm import tqdm
 
 def generate_and_save_graphs(num_graphs=10000, groupsAmount=3, nodeAmount=300):
     graphs = []
     for _ in tqdm(range(num_graphs)):
-        data, adj, all_nodes, labels = makeDataSet(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
         graphs.append((data, adj, all_nodes, labels))
     
     torch.save(graphs, '{}_groups_{}_nodes_pregenerated_graphs_validation.pt'.format(groupsAmount, nodeAmount))

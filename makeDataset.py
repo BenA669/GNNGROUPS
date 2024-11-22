@@ -12,7 +12,7 @@ def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels
     node_positions = node_positions.cpu().numpy()
     true_labels = true_labels.cpu().numpy()
     if predicted_labels is not None and type(predicted_labels) == torch.Tensor:
-        predicted_labels = predicted_labels.numpy()
+        predicted_labels = predicted_labels.cpu().numpy()
 
     # Create a NetworkX graph from the adjacency matrix
     G = nx.Graph()

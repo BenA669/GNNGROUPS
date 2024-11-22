@@ -30,8 +30,6 @@ hidden_dim2 = 5
 
 model = GCN(input_dim, hidden_dim1, hidden_dim2).to(device)
 
-model = model.to(device)
-
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 # Add a learning rate scheduler

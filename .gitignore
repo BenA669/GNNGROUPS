@@ -8,3 +8,4 @@ pregenerated_graphs_validation.pt
 32/
 pyvenv.cfg
 *.pt
+*.pth

@@ -1,6 +1,6 @@
 import torch
 from model import GCN
-from makeDataset import makeDataSet, plot_dataset
+from makeDataset import makeDataSetCUDA, plot_dataset
 import statistics
 from tqdm import tqdm
 import argparse
@@ -101,12 +101,13 @@ def eval(model, amt, graphs):
     
     model.eval()
     # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
+    graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)
     accTotal = []
     for i in tqdm(range(0, amt)):
-        # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2)
+        # data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=2)
         data, adj, all_nodes, labels = graphs[i]
         output = model(all_nodes.float(), adj.float())
         
@@ -128,6 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('--i', type=int, default=1000, help='Number of iterations for evaluation')
     parser.add_argument('--m', type=str, default=1000, help='Model')
     parser.add_argument('--c', action='store_true')
+    parser.add_argument('--n', action='store_true')
     args = parser.parse_args()
 
     # Load the model
@@ -141,14 +143,18 @@ if __name__ == '__main__':
     # Evaluate the model
     iterations = args.i
 
-    graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
+    # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
+    graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)
     accTotal = []
     for i in tqdm(range(0, iterations)):
-        data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=100)
-        # data, adj, all_nodes, labels = graphs[i]
+        if args.n:
+            data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=2, nodeAmount=100)
+        else:
+            data, adj, all_nodes, labels = graphs[i]
+
         with torch.no_grad():
             output = model(all_nodes.float(), adj.float())
             # _, predicted_labels = torch.max(output, 1)

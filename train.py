@@ -25,10 +25,10 @@ graphs_validation = torch.load('2_groups_100_nodes_pregenerated_graphs.pt')
 lr = 0.001
 weight_decay = 5e-4
 input_dim = 2
-hidden_dim1 = 32
-hidden_dim2 = 5
+hidden_dim1 = 64
+outputdim = 16
 
-model = GCN(input_dim, hidden_dim1, hidden_dim2).to(device)
+model = GCN(input_dim, hidden_dim1, outputdim).to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 

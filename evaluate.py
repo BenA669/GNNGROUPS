@@ -133,7 +133,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Load the model
-    model = GCN(2, 32, 5)
+    model = GCN(2, 64, 16)
     model.load_state_dict(torch.load(args.m))
     # model.load_state_dict(torch.load('gcn_model.pth'))
     model.eval()

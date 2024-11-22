@@ -154,7 +154,7 @@ def outputToLabels(output, labels):
     print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
 
     spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy()), device=device)
+    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy())).to(device=device)
     return findRightPerm(predicted_labels, labels)
 
 def eval(model, amt, graphs):

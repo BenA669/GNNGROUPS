@@ -135,7 +135,7 @@ def outputToLabels(output, labels, modelCluster):
     _, max_index = torch.max(cluster_output, dim=0)
 
     # Convert the max_index to an integer
-    n_clusters = int(max_index.item())
+    n_clusters = int(max_index.item()) + 1
 
     # print(n_clusters.shape)
     # print("{} Predicted clusters".format(n_clusters))

@@ -97,7 +97,7 @@ for epoch in tqdm(range(epochs)):
 
     if epoch % epochUpd == 0:
         print(f'Epoch {epoch}, Loss Average: {statistics.mean(previous_losses)}')
-        print("Evaluation: {}".format(eval(model, 1000, graphs_validation)))
+        print("Evaluation: {}".format(eval(model, cluster_model, 1000, graphs_validation)))
 
 
 torch.save(model.state_dict(), 'gcn_modelMIXED300.pth'.format(epochs, lr))

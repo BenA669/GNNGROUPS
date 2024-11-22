@@ -135,7 +135,7 @@ def outputToLabels(output, labels, modelCluster):
 
     return findRightPerm(predicted_labels, labels)
 
-def eval(model, amt, graphs):
+def eval(model, cluster_model, amt, graphs):
     
     model.eval()
     # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
@@ -149,7 +149,7 @@ def eval(model, amt, graphs):
         data, adj, all_nodes, labels = graphs[i]
         output = model(all_nodes.float(), adj.float())
         
-        predicted_labels, accuracy = outputToLabels(output, labels)
+        predicted_labels, accuracy = outputToLabels(output, labels, cluster_model)
 
         # Calculate accuracy
         accTotal.append(accuracy)

@@ -1,4 +1,5 @@
 import torch
+import warnings
 from model import GCN, ClusterPredictor
 from makeDataset import makeDataSetCUDA, plot_dataset
 import statistics
@@ -9,7 +10,10 @@ from sklearn.cluster import SpectralClustering, DBSCAN
 from itertools import permutations
 from scipy.optimize import linear_sum_assignment
 import hdbscan
+import warnings
 
+# Ignore warnings about unconnected graphs in Spectral Clustering
+warnings.filterwarnings("ignore", category=UserWarning, message=".*Graph is not fully connected.*")
 
 # 96.3447 Acc after 10,000 iterations
 
@@ -124,10 +128,18 @@ def outputToLabels(output, labels, modelCluster):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
-    n_clusters = modelCluster(output)
+    # Assuming the output is of shape (300, 1)
+    cluster_output = modelCluster(output)  # Shape: [300, 1]
+
+    # Find the index of the maximum value
+    _, max_index = torch.max(cluster_output, dim=0)
+
+    # Convert the max_index to an integer
+    n_clusters = int(max_index.item())
+
+    # print(n_clusters.shape)
     # print("{} Predicted clusters".format(n_clusters))
-    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
+    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='rbf', random_state=42)
     # hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=5, metric='euclidean')
 
     # predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)

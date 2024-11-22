@@ -74,7 +74,13 @@ for epoch in tqdm(range(epochs)):
         batch_loss += loss
 
         # Predict number of clusters
-        num_clusters_pred = cluster_model(output)
+        cluster_output = cluster_model(output)
+        # Find the index of the maximum value
+        _, max_index = torch.max(cluster_output, dim=0)
+
+        # Convert the max_index to an integer
+        num_clusters_pred = torch.tensor(max_index.item(), dtype=torch.float32).to(device)
+        
         num_unique_labels = len(torch.unique(labels))
 
         # Calculate cluster prediction loss

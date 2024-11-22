@@ -5,7 +5,7 @@ import statistics
 from tqdm import tqdm
 import argparse
 import torch.nn.functional as F
-from sklearn.cluster import SpectralClustering
+from sklearn.cluster import SpectralClustering, DBSCAN
 from itertools import permutations
 from scipy.optimize import linear_sum_assignment
 import numpy as np
@@ -118,48 +118,19 @@ def InfoNCELoss(output, labels):
     loss = loss.mean()
 
     return loss
-
-def compute_laplacian(adj):
-    """Compute the Laplacian of the adjacency matrix."""
-    device = adj.device
-    # Degree matrix
-
-    adj = adj.float()
-
-    degree = torch.sum(adj, dim=1)
-    D = torch.diag(degree).to(device)
-
-    # Unnormalized Laplacian
-    L = D - adj
-    return L
-
-def eigengap_heuristic(L):
-    """Apply Eigengap Heuristic to determine optimal number of clusters."""
-
-    L = L.float()
-    # Compute eigenvalues and eigenvectors
-    eigenvalues, _ = torch.linalg.eigh(L)  # Using eigh for symmetric matrices like Laplacian
-
-    # Sort eigenvalues in ascending order
-    sorted_eigenvalues = torch.sort(eigenvalues)[0].cpu().numpy()
-
-    # Compute the differences (gaps) between consecutive eigenvalues
-    eigengaps = np.diff(sorted_eigenvalues)
-
-    # Find the largest gap
-    optimal_clusters = np.argmax(eigengaps) + 1  # +1 because eigengaps are differences
-    return optimal_clusters
-
 def outputToLabels(output, labels):
     # n_clusters = 2  # Set the number of clusters you expect
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    L = compute_laplacian(adj)
 
-    n_clusters = eigengap_heuristic(L)
-    print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
+    # print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
 
-    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy())).to(device=device)
+    # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
+
+    eps = 0.5  # maximum distance between two samples for them to be considered as in the same neighborhood
+    min_samples = 5  # minimum number of samples in a neighborhood for a point to be considered as a core point
+
+    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+    predicted_labels = torch.from_numpy(dbscan.fit_predict(output.detach().cpu().numpy())).to(device=device)
     return findRightPerm(predicted_labels, labels)
 
 def eval(model, amt, graphs):

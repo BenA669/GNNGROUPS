@@ -6,6 +6,10 @@ from evaluate import eval, InfoNCELoss
 import torch.nn.functional as F
 from tqdm import tqdm
 
+graphs = torch.load('2_groups_100_nodes_pregenerated_graphs.pt')
+graphs_validation = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
+    
+
 def objective(trial):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("Using Device: {}".format(device))
@@ -23,8 +27,6 @@ def objective(trial):
     
     # Training loop
     epochs = 5000
-    graphs = torch.load('2_groups_100_nodes_pregenerated_graphs.pt')
-    graphs_validation = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
     
     for epoch in tqdm(range(epochs)):
         model.train()

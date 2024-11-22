@@ -15,10 +15,10 @@ def objective(trial):
     print("Using Device: {}".format(device))
 
     # Suggest values for hyperparameters
-    lr = trial.suggest_loguniform('lr', 1e-5, 1e-1)
+    lr = trial.suggest_float('lr', 1e-5, 1e-1, log=True)
     hidden_dim1 = trial.suggest_int('hidden_dim1', 16, 128)
     output_dim = trial.suggest_int('output_dim', 4, 16)
-    weight_decay = trial.suggest_loguniform('weight_decay', 1e-6, 1e-2)
+    weight_decay = trial.suggest_float('weight_decay', 1e-6, 1e-2, log=True)
     batch_size = trial.suggest_int('batch_size', 1, 10)
 
     # Initialize model, criterion, and optimizer

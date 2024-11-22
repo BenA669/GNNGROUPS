@@ -101,7 +101,7 @@ def eval(model, amt, graphs):
     
     model.eval()
     # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
-    graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
+    # graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)

@@ -7,7 +7,8 @@ import argparse
 import torch.nn.functional as F
 from sklearn.cluster import SpectralClustering
 from itertools import permutations
-
+from scipy.optimize import linear_sum_assignment
+import numpy as np
 
 # 96.3447 Acc after 10,000 iterations
 
@@ -29,17 +30,40 @@ def generate_swapped_sequences(original_sequence):
     return swapped_sequences
 
 
+# def findRightPerm(predicted_labels, labels):
+#     best_accuracy = 0.0
+#     best_permutation = None
+
+#     permutations = generate_swapped_sequences(predicted_labels)
+
+#     for perm in permutations:
+#         correct_predictions = torch.sum(perm == labels).item()
+#         if correct_predictions > best_accuracy:
+#             best_accuracy = correct_predictions
+#             best_permutation = perm
+
+#     return best_permutation, best_accuracy
+
 def findRightPerm(predicted_labels, labels):
-    best_accuracy = 0.0
-    best_permutation = None
+    # Construct a cost matrix based on misalignment between true and predicted labels
+    unique_labels = torch.unique(labels)
+    cost_matrix = torch.zeros((len(unique_labels), len(unique_labels)))
 
-    permutations = generate_swapped_sequences(predicted_labels)
+    for i, true_label in enumerate(unique_labels):
+        for j, pred_label in enumerate(unique_labels):
+            cost_matrix[i, j] = torch.sum((labels == true_label) & (predicted_labels != pred_label))
 
-    for perm in permutations:
-        correct_predictions = torch.sum(perm == labels).item()
-        if correct_predictions > best_accuracy:
-            best_accuracy = correct_predictions
-            best_permutation = perm
+    # Solve assignment problem using Hungarian algorithm
+    row_ind, col_ind = linear_sum_assignment(cost_matrix.numpy())
+    best_permutation = torch.zeros_like(predicted_labels)
+
+    # Remap predicted labels according to the optimal alignment
+    for i, j in zip(row_ind, col_ind):
+        best_permutation[predicted_labels == unique_labels[j]] = unique_labels[i]
+
+    # Calculate the accuracy of this alignment
+    correct_predictions = torch.sum(best_permutation == labels).item()
+    best_accuracy = correct_predictions / len(labels)
 
     return best_permutation, best_accuracy
 
@@ -90,9 +114,40 @@ def InfoNCELoss(output, labels):
 
     return loss
 
+def compute_laplacian(adj):
+    """Compute the Laplacian of the adjacency matrix."""
+    device = adj.device
+    # Degree matrix
+    degree = torch.sum(adj, dim=1)
+    D = torch.diag(degree).to(device)
+
+    # Unnormalized Laplacian
+    L = D - adj
+    return L
+
+def eigengap_heuristic(L):
+    """Apply Eigengap Heuristic to determine optimal number of clusters."""
+    # Compute eigenvalues and eigenvectors
+    eigenvalues, _ = torch.linalg.eigh(L)  # Using eigh for symmetric matrices like Laplacian
+
+    # Sort eigenvalues in ascending order
+    sorted_eigenvalues = torch.sort(eigenvalues)[0].cpu().numpy()
+
+    # Compute the differences (gaps) between consecutive eigenvalues
+    eigengaps = np.diff(sorted_eigenvalues)
+
+    # Find the largest gap
+    optimal_clusters = np.argmax(eigengaps) + 1  # +1 because eigengaps are differences
+    return optimal_clusters
 
 def outputToLabels(output, labels):
-    n_clusters = 2  # Set the number of clusters you expect
+    # n_clusters = 2  # Set the number of clusters you expect
+
+    L = compute_laplacian(adj)
+
+    n_clusters = eigengap_heuristic(L)
+    print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
+
     spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
     predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy()))
     return findRightPerm(predicted_labels, labels)
@@ -144,7 +199,7 @@ if __name__ == '__main__':
     iterations = args.i
 
     # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
-    graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
+    graphs = torch.load('3_groups_300_nodes_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)

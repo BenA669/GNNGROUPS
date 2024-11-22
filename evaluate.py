@@ -8,7 +8,8 @@ import torch.nn.functional as F
 from sklearn.cluster import SpectralClustering, DBSCAN
 from itertools import permutations
 from scipy.optimize import linear_sum_assignment
-import numpy as np
+import hdbscan
+
 
 # 96.3447 Acc after 10,000 iterations
 
@@ -125,12 +126,9 @@ def outputToLabels(output, labels):
     # print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
 
     # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
+    hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=10, metric='euclidean')
 
-    eps = 0.5  # maximum distance between two samples for them to be considered as in the same neighborhood
-    min_samples = 5  # minimum number of samples in a neighborhood for a point to be considered as a core point
-
-    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-    predicted_labels = torch.from_numpy(dbscan.fit_predict(output.detach().cpu().numpy())).to(device=device)
+    predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)
     return findRightPerm(predicted_labels, labels)
 
 def eval(model, amt, graphs):

@@ -52,15 +52,15 @@ def findRightPerm(predicted_labels, labels):
 
     # Construct a cost matrix based on misalignment between true and predicted labels
     unique_labels = torch.unique(labels)
-    cost_matrix = torch.zeros((len(unique_labels), len(unique_labels)))
+    cost_matrix = torch.zeros((len(unique_labels), len(unique_labels)), device=device)
 
     for i, true_label in enumerate(unique_labels):
         for j, pred_label in enumerate(unique_labels):
-            cost_matrix[i, j] = torch.sum((labels == true_label) & (predicted_labels != pred_label), device=device)
+            cost_matrix[i, j] = torch.sum((labels == true_label) & (predicted_labels != pred_label))
 
     # Solve assignment problem using Hungarian algorithm
-    row_ind, col_ind = linear_sum_assignment(cost_matrix.numpy())
-    best_permutation = torch.zeros_like(predicted_labels)
+    row_ind, col_ind = linear_sum_assignment(cost_matrix.cpu().numpy())
+    best_permutation = torch.zeros_like(predicted_labels, device=device)
 
     # Remap predicted labels according to the optimal alignment
     for i, j in zip(row_ind, col_ind):

@@ -236,8 +236,12 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
 
     return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
-def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, 
-                connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
+def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=1, nodeNeighborStdDev=0.2, 
+                connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.34):
+    
+    if nodeAmount % groupsAmount != 0:
+        print("Node amount must be divisible by groups amount")
+        return
     
     # Determine the GPU device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -251,17 +255,38 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
     outliers = []
     all_group_averages = []
 
+    # Set the first group's seed point randomly
+    data[0, 0] = torch.rand(nodeDim, generator=rng, device=device)
+
+    # Generate subsequent group seed points with randomness while ensuring minimum distance
+    for group in range(1, groupsAmount):
+        successful = False
+
+        # Attempt to generate a new seed point with sufficient distance from previous seeds
+        for i in range(100):  # Limit attempts to avoid infinite loops
+            candidate_position = torch.rand(nodeDim, generator=rng, device=device)
+            distances = torch.linalg.norm(candidate_position - data[:group, 0], dim=1)
+            if torch.min(distances) > repulsion_factor:
+                data[group, 0] = candidate_position
+                successful = True
+                break
+
+        # If we couldn't find a suitable candidate after 100 attempts, adjust to the closest valid position
+        if not successful:
+            farthest_seed = data[:group, 0] + torch.randn_like(data[:group, 0]) * repulsion_factor
+            data[group, 0] = farthest_seed.mean(dim=0)
+
     for group in range(groupsAmount):
-        if group == 0:
-            data[group, 0] = torch.rand(nodeDim, generator=rng, device=device)
-        else:
-            # Find position far enough from other group seeds
-            while True:
-                candidate_position = torch.rand(nodeDim, generator=rng, device=device)
-                min_distance = torch.min(torch.linalg.norm(candidate_position - data[:group, 0], dim=1))
-                if min_distance > repulsion_factor:
-                    data[group, 0] = candidate_position
-                    break
+        # if group == 0:
+        #     data[group, 0] = torch.rand(nodeDim, generator=rng, device=device)
+        # else:
+        #     # Find position far enough from other group seeds
+        #     while True:
+        #         candidate_position = torch.rand(nodeDim, generator=rng, device=device)
+        #         min_distance = torch.min(torch.linalg.norm(candidate_position - data[:group, 0], dim=1))
+        #         if min_distance > repulsion_factor:
+        #             data[group, 0] = candidate_position
+        #             break
 
         group_average = data[group, 0].clone()
 
@@ -322,33 +347,34 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
     return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
 if __name__ == "__main__":
-    groupsAmount = 2
-    nodeAmount = 100
+    groupsAmount = 3
+    nodeAmount = 300
     iterations = 100
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
-    data, adj, all_nodes, labels = makeDataSetCUDA(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
+    # data, adj, all_nodes, labels = makeDataSetCUDA(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
+    data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
     
 
-    # Time the execution of makeDataSet
-    start_time = time.time()
-    for i in tqdm(range(iterations)):
-        data, adj, all_nodes, labels = makeDataSet(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
-    makeDataSet_time = time.time() - start_time
+    # # Time the execution of makeDataSet
+    # start_time = time.time()
+    # for i in tqdm(range(iterations)):
+    #     data, adj, all_nodes, labels = makeDataSet(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+    # makeDataSet_time = time.time() - start_time
 
-    # Time the execution of makeDataSetOLD
-    start_time = time.time()
-    for i in tqdm(range(iterations)):
-        data_old, adj_old, all_nodes_old, labels_old = makeDataSetOLD(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
-    makeDataSetOLD_time = time.time() - start_time
+    # # Time the execution of makeDataSetOLD
+    # start_time = time.time()
+    # for i in tqdm(range(iterations)):
+    #     data_old, adj_old, all_nodes_old, labels_old = makeDataSetOLD(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+    # makeDataSetOLD_time = time.time() - start_time
 
-    start_time = time.time()
-    for i in tqdm(range(iterations)):
-        data_old, adj_old, all_nodes_old, labels_old = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
-    makeDataSetCUDA_time = time.time() - start_time
+    # start_time = time.time()
+    # for i in tqdm(range(iterations)):
+    #     data_old, adj_old, all_nodes_old, labels_old = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+    # makeDataSetCUDA_time = time.time() - start_time
     
 
-    # Print the execution times
-    print(f"makeDataSet execution time: {makeDataSet_time:.4f} seconds")
-    print(f"makeDataSetOLD execution time: {makeDataSetOLD_time:.4f} seconds")
-    print(f"makeDataSetCUDA execution time: {makeDataSetCUDA_time:.4f} seconds")
-    # plot_dataset(data, groupsAmount, adj, all_nodes, labels)
+    # # Print the execution times
+    # print(f"makeDataSet execution time: {makeDataSet_time:.4f} seconds")
+    # print(f"makeDataSetOLD execution time: {makeDataSetOLD_time:.4f} seconds")
+    # print(f"makeDataSetCUDA execution time: {makeDataSetCUDA_time:.4f} seconds")
+    plot_dataset(data, groupsAmount, adj, all_nodes, labels)

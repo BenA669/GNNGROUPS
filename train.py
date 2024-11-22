@@ -53,6 +53,7 @@ loss_memory_size  = 50
 for epoch in tqdm(range(epochs)):
     model.train()
     optimizer.zero_grad()
+    cluster_optimizer.zero_grad()
 
     # Load a batch of graphs
     batch_start = (epoch * batch_size) % len(graphs)
@@ -60,15 +61,17 @@ for epoch in tqdm(range(epochs)):
     batch_graphs = graphs[batch_start:batch_end]
 
     batch_graphs_on_device = [(data.to(device), adj.to(device), all_nodes.to(device), labels.to(device)) 
-                          for data, adj, all_nodes, labels in batch_graphs]
+                              for data, adj, all_nodes, labels in batch_graphs]
 
-    # Find loss for batch of graphs
+    # Accumulate batch loss
     batch_loss = 0
+    cluster_loss_total = 0
     for data, adj, all_nodes, labels in batch_graphs_on_device:
         output = model(all_nodes.float(), adj.float())
+        
+        # Calculate InfoNCE Loss
         loss = InfoNCELoss(output, labels)
-        loss.backward()
-        batch_loss += loss.item()
+        batch_loss += loss
 
         # Predict number of clusters
         num_clusters_pred = cluster_model(output)
@@ -76,20 +79,19 @@ for epoch in tqdm(range(epochs)):
 
         # Calculate cluster prediction loss
         cluster_loss = F.mse_loss(num_clusters_pred, torch.tensor(num_unique_labels, dtype=torch.float32).to(device))
-        cluster_loss.backward()
+        cluster_loss_total += cluster_loss
 
-    
-        
+    # Backpropagate for accumulated losses
+    total_loss = batch_loss + cluster_loss_total
+    total_loss.backward()
+
     # Update weights
     optimizer.step()
     cluster_optimizer.step()
 
-    # Step the scheduler
-    # scheduler.step()
-
     # Record average batch loss
-    batch_loss /= batch_size
-    previous_losses.append(batch_loss)
+    batch_loss_value = (batch_loss / batch_size).item()
+    previous_losses.append(batch_loss_value)
     if len(previous_losses) > loss_memory_size:
         previous_losses.pop(0)
 

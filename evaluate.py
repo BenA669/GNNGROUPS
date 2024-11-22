@@ -100,7 +100,7 @@ def InfoNCELoss(output, labels):
 def outputToLabels(output, labels):
     n_clusters = 2  # Set the number of clusters you expect
     spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().numpy()))
+    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy()))
     return findRightPerm(predicted_labels, labels)
 
 def eval(model, amt, graphs):
@@ -153,8 +153,8 @@ if __name__ == '__main__':
     total_predictions = labels.size(0)
     accTotal = []
     for i in tqdm(range(0, iterations)):
-        # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=100)
-        data, adj, all_nodes, labels = graphs[i]
+        data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, nodeAmount=100)
+        # data, adj, all_nodes, labels = graphs[i]
         with torch.no_grad():
             output = model(all_nodes.float(), adj.float())
             # _, predicted_labels = torch.max(output, 1)

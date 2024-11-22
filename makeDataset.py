@@ -3,13 +3,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import networkx as nx
+from tqdm import tqdm
 
 # Convert tensors to numpy for plotting
 def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels, predicted_labels=None):
-    data = data.numpy()
-    adjacency_matrix = adjacency_matrix.numpy()
-    node_positions = node_positions.numpy()
-    true_labels = true_labels.numpy()
+    data = data.cpu().numpy()
+    adjacency_matrix = adjacency_matrix.cpu().numpy()
+    node_positions = node_positions.cpu().numpy()
+    true_labels = true_labels.cpu().numpy()
     if predicted_labels is not None and type(predicted_labels) == torch.Tensor:
         predicted_labels = predicted_labels.numpy()
 
@@ -235,25 +236,119 @@ def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=
 
     return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
+def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, 
+                connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
+    
+    # Determine the GPU device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Create random generator and move data to GPU if available
+    rng = torch.Generator(device).manual_seed(torch.seed())
+    node_per_group = nodeAmount // groupsAmount
+
+    # Create data on the GPU
+    data = torch.zeros((groupsAmount, node_per_group, nodeDim), dtype=torch.float32, device=device)
+    outliers = []
+    all_group_averages = []
+
+    for group in range(groupsAmount):
+        if group == 0:
+            data[group, 0] = torch.rand(nodeDim, generator=rng, device=device)
+        else:
+            # Find position far enough from other group seeds
+            while True:
+                candidate_position = torch.rand(nodeDim, generator=rng, device=device)
+                min_distance = torch.min(torch.linalg.norm(candidate_position - data[:group, 0], dim=1))
+                if min_distance > repulsion_factor:
+                    data[group, 0] = candidate_position
+                    break
+
+        group_average = data[group, 0].clone()
+
+        for node in range(1, node_per_group):
+            # Running average update every 10% of nodes
+            if node % (node_per_group // 10) == 0:
+                group_average = torch.mean(data[group, :node], dim=0)
+
+            p = torch.rand(1, generator=rng, device=device).item()
+
+            if p < nodeNeighborBaseProb:
+                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+            else:
+                outliers.append((group, node))
+                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+
+        all_group_averages.append(group_average)
+
+    # Create outliers using global average
+    average_array = torch.mean(torch.stack(all_group_averages), dim=0)
+    for group, node in outliers:
+        data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+
+    # Combine all nodes into one array
+    all_nodes = data.view(nodeAmount, nodeDim)
+
+    # Create adjacency matrix based on distances and group probabilities
+    adjacency_matrix = torch.zeros((nodeAmount, nodeAmount), dtype=torch.int32, device=device)
+    
+    # Compute pairwise distances using GPU (batch computation)
+    distances = torch.cdist(all_nodes, all_nodes, p=2)  # This will generate a matrix of distances
+
+    # Compute group indices
+    group_indices = torch.arange(nodeAmount, device=device) // node_per_group
+    intra_mask = group_indices.unsqueeze(0) == group_indices.unsqueeze(1)
+
+    # Calculate probabilities for intra and inter group links
+    probabilities = torch.where(intra_mask, intra_group_prob / (1 + distances), inter_group_prob / (1 + distances))
+    probabilities = torch.where(distances <= connectedThreshold, probabilities * 2, probabilities)
+
+    # Randomize connections based on probabilities (efficiently, on GPU)
+    random_probs = torch.rand((nodeAmount, nodeAmount), generator=rng, device=device)
+    adjacency_matrix = (random_probs < probabilities).int()
+
+    # Make the adjacency matrix symmetric
+    adjacency_matrix = torch.triu(adjacency_matrix, diagonal=1)
+    adjacency_matrix = adjacency_matrix + adjacency_matrix.T
+
+    # Create labels
+    labels = torch.arange(groupsAmount, device=device).repeat_interleave(node_per_group)
+
+    # Shuffle nodes and their labels
+    shuffle_indices = torch.randperm(nodeAmount, generator=rng, device=device)
+    shuffled_all_nodes = all_nodes[shuffle_indices]
+    shuffled_labels = labels[shuffle_indices]
+    shuffled_adj = adjacency_matrix[shuffle_indices][:, shuffle_indices]
+
+    return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
 if __name__ == "__main__":
     groupsAmount = 2
     nodeAmount = 100
+    iterations = 100
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
-    data, adj, all_nodes, labels = makeDataSet(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
+    data, adj, all_nodes, labels = makeDataSetCUDA(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
     
 
     # Time the execution of makeDataSet
     start_time = time.time()
-    data, adj, all_nodes, labels = makeDataSet(nodeNeighborStdDev=0.2, nodeNeighborBaseProb=1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
+    for i in tqdm(range(iterations)):
+        data, adj, all_nodes, labels = makeDataSet(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
     makeDataSet_time = time.time() - start_time
 
     # Time the execution of makeDataSetOLD
     start_time = time.time()
-    data_old, adj_old, all_nodes_old, labels_old = makeDataSetOLD(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+    for i in tqdm(range(iterations)):
+        data_old, adj_old, all_nodes_old, labels_old = makeDataSetOLD(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
     makeDataSetOLD_time = time.time() - start_time
+
+    start_time = time.time()
+    for i in tqdm(range(iterations)):
+        data_old, adj_old, all_nodes_old, labels_old = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+    makeDataSetCUDA_time = time.time() - start_time
+    
 
     # Print the execution times
     print(f"makeDataSet execution time: {makeDataSet_time:.4f} seconds")
     print(f"makeDataSetOLD execution time: {makeDataSetOLD_time:.4f} seconds")
-    plot_dataset(data, groupsAmount, adj, all_nodes, labels)
+    print(f"makeDataSetCUDA execution time: {makeDataSetCUDA_time:.4f} seconds")
+    # plot_dataset(data, groupsAmount, adj, all_nodes, labels)

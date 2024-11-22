@@ -8,11 +8,18 @@ import math
 class GraphConvolution(nn.Module):
     def __init__(self, in_features, out_features, bias=True):
         super(GraphConvolution, self).__init__()
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.in_features = in_features
         self.out_features = out_features
-        self.weight = Parameter(torch.FloatTensor(in_features, out_features))
+        # self.weight = Parameter(torch.FloatTensor(in_features, out_features))
+        self.weight = Parameter(torch.empty(in_features, out_features, device=self.device))
+
         if bias:
-            self.bias = Parameter(torch.FloatTensor(out_features))
+            # self.bias = Parameter(torch.FloatTensor(out_features, device=device))
+            self.bias = Parameter(torch.empty(out_features, device=self.device))
+
         else:
             self.register_parameter('bias', None)
         self.reset_parameters()
@@ -27,15 +34,23 @@ class GraphConvolution(nn.Module):
         # input = H
         # adj = A
         eps=1e-6
-        
-        A_tilde = adj + torch.eye(adj.shape[0])
+
+        if str(self.device) == "cuda":
+            if str(adj.device) == 'cpu':
+                print("ADJ TO CUDA")
+                adj = adj.to('cuda')
+            if str(input.device) == 'cpu':
+                print("INPUT TO CUDA")
+                input = input.to('cuda')
+
+        A_tilde = adj + torch.eye(adj.shape[0], device=self.device)
 
 
         degree = torch.sum(adj, dim=1)
         degree_matrix_inv_sqrt = torch.diag(torch.pow(degree + eps, -0.5))
 
         adj_normalized = torch.mm(degree_matrix_inv_sqrt, torch.mm(A_tilde, degree_matrix_inv_sqrt))
-        input = input.to(adj_normalized.dtype)
+        # input = input.to(adj_normalized.dtype)
         output = torch.mm(adj_normalized, torch.mm(input, self.weight))
 
         return output

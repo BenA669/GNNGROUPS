@@ -30,10 +30,6 @@ hidden_dim2 = 5
 
 model = GCN(input_dim, hidden_dim1, hidden_dim2).to(device)
 
-if torch.cuda.device_count() > 1:
-    print(f"Using {torch.cuda.device_count()} GPUs")
-    model = torch.nn.DataParallel(model)
-
 model = model.to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -87,11 +83,5 @@ for epoch in tqdm(range(epochs)):
         print("Evaluation: {}".format(eval(model, 1000, graphs_validation)))
 
 
-# torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
-# print("Model saved as 'gcn_model{}BatchLR{}SCHED.pth'".format(epochs, lr))
-
-# Save the model (DataParallel adds a module prefix, handle appropriately)
-if isinstance(model, torch.nn.DataParallel):
-    torch.save(model.module.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
-else:
-    torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
+torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
+print("Model saved as 'gcn_model{}BatchLR{}SCHED.pth'".format(epochs, lr))

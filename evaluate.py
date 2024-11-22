@@ -126,7 +126,7 @@ def outputToLabels(output, labels):
     # print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
 
     # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-    hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=10, metric='euclidean')
+    hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=5, metric='euclidean')
 
     predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)
     return findRightPerm(predicted_labels, labels)
@@ -177,7 +177,7 @@ if __name__ == '__main__':
     iterations = args.i
 
     # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
-    graphs = torch.load('3_groups_300_nodes_pregenerated_graphs_validation.pt')
+    graphs = torch.load('300_nodes_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)
@@ -208,7 +208,7 @@ if __name__ == '__main__':
             print("Predicted Labels:", predicted_labels)
             print("True Labels:", labels)
             print(f'Accuracy of the model: {accuracy:.2f}%')
-            plot_dataset(data, 2, adj, all_nodes, labels, predicted_labels)
+            plot_dataset(data, adj, all_nodes, labels, predicted_labels)
 
     print(f'Accuracy of the model: {accuracy:.2f}%')
     print("Predicted Labels:", predicted_labels)
@@ -217,7 +217,7 @@ if __name__ == '__main__':
     print("Performance: {}".format(statistics.mean(accTotal)))
 
     # Plot results
-    plot_dataset(data, 2, adj, all_nodes, labels, predicted_labels)
+    plot_dataset(data, adj, all_nodes, labels, predicted_labels)
     
 
     #70 ish

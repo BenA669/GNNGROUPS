@@ -6,13 +6,15 @@ import networkx as nx
 from tqdm import tqdm
 
 # Convert tensors to numpy for plotting
-def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels, predicted_labels=None):
+def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_labels=None):
     data = data.cpu().numpy()
     adjacency_matrix = adjacency_matrix.cpu().numpy()
     node_positions = node_positions.cpu().numpy()
     true_labels = true_labels.cpu().numpy()
     if predicted_labels is not None and type(predicted_labels) == torch.Tensor:
         predicted_labels = predicted_labels.cpu().numpy()
+
+    num_groups = len(np.unique(true_labels))
 
     # Create a NetworkX graph from the adjacency matrix
     G = nx.Graph()
@@ -35,7 +37,7 @@ def plot_dataset(data, num_groups, adjacency_matrix, node_positions, true_labels
     for group in range(num_groups):
         group_nodes = [i for i in range(len(true_labels)) if true_labels[i] == group]
         group_positions = node_positions[group_nodes]
-        plt.scatter(group_positions[:, 0], group_positions[:, 1], label=f"Group {group}", alpha=0.8, color=colors[group])
+        plt.scatter(group_positions[:, 0], group_positions[:, 1], label=f"Group {group}", alpha=0.8, color=colors[group%8])
 
     # Overlay incorrect labels in transparent red
     if (predicted_labels is not None):
@@ -263,7 +265,7 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
         successful = False
 
         # Attempt to generate a new seed point with sufficient distance from previous seeds
-        for i in range(100):  # Limit attempts to avoid infinite loops
+        for i in range(10):  # Limit attempts to avoid infinite loops
             candidate_position = torch.rand(nodeDim, generator=rng, device=device)
             distances = torch.linalg.norm(candidate_position - data[:group, 0], dim=1)
             if torch.min(distances) > repulsion_factor:
@@ -292,8 +294,12 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
 
         for node in range(1, node_per_group):
             # Running average update every 10% of nodes
-            if node % (node_per_group // 10) == 0:
-                group_average = torch.mean(data[group, :node], dim=0)
+            # print("YAHURR")
+            # print(node)
+            # print(node_per_group)
+            if node_per_group >= 10:
+                if node % (node_per_group // 10) == 0:
+                    group_average = torch.mean(data[group, :node], dim=0)
 
             p = torch.rand(1, generator=rng, device=device).item()
 
@@ -347,8 +353,8 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
     return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
 if __name__ == "__main__":
-    groupsAmount = 3
-    nodeAmount = 300
+    groupsAmount = 5
+    nodeAmount = 500
     iterations = 100
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
     # data, adj, all_nodes, labels = makeDataSetCUDA(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
@@ -377,4 +383,4 @@ if __name__ == "__main__":
     # print(f"makeDataSet execution time: {makeDataSet_time:.4f} seconds")
     # print(f"makeDataSetOLD execution time: {makeDataSetOLD_time:.4f} seconds")
     # print(f"makeDataSetCUDA execution time: {makeDataSetCUDA_time:.4f} seconds")
-    plot_dataset(data, groupsAmount, adj, all_nodes, labels)
+    plot_dataset(data, adj, all_nodes, labels)

@@ -18,8 +18,8 @@ from tqdm import tqdm
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("Using Device: {}".format(device))
 
-graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
-graphs_validation = torch.load('2_groups_100_nodes_pregenerated_graphs.pt')
+graphs = torch.load('300_nodes_pregenerated_graphs.pt')
+graphs_validation = torch.load('300_nodes_pregenerated_graphs_validation.pt')
 
 # Initialize model, criterion, and optimizer
 lr = 0.001
@@ -81,5 +81,5 @@ for epoch in tqdm(range(epochs)):
         print("Evaluation: {}".format(eval(model, 1000, graphs_validation)))
 
 
-torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
-print("Model saved as 'gcn_model{}BatchLR{}SCHED.pth'".format(epochs, lr))
+torch.save(model.state_dict(), 'gcn_modelMIXED300.pth'.format(epochs, lr))
+print("Model saved as 'gcn_modelMIXED300.pth'".format(epochs, lr))

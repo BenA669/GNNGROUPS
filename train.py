@@ -1,4 +1,4 @@
-from model import GCN
+from model import GCN, ClusterPredictor
 from evaluate import eval, InfoNCELoss
 from genGraphs import generate_and_save_graphs
 import torch
@@ -32,6 +32,11 @@ model = GCN(input_dim, hidden_dim1, outputdim).to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
+
+
+cluster_model = ClusterPredictor(outputdim).to(device)
+cluster_optimizer = optim.Adam(cluster_model.parameters(), lr=lr)
+
 # Add a learning rate scheduler
 # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
 
@@ -64,8 +69,20 @@ for epoch in tqdm(range(epochs)):
         loss = InfoNCELoss(output, labels)
         loss.backward()
         batch_loss += loss.item()
+
+        # Predict number of clusters
+        num_clusters_pred = cluster_model(output)
+        num_unique_labels = len(torch.unique(labels))
+
+        # Calculate cluster prediction loss
+        cluster_loss = F.mse_loss(num_clusters_pred, torch.tensor(num_unique_labels, dtype=torch.float32).to(device))
+        cluster_loss.backward()
+
+    
+        
     # Update weights
     optimizer.step()
+    cluster_optimizer.step()
 
     # Step the scheduler
     # scheduler.step()
@@ -82,4 +99,6 @@ for epoch in tqdm(range(epochs)):
 
 
 torch.save(model.state_dict(), 'gcn_modelMIXED300.pth'.format(epochs, lr))
+print("Model saved as 'gcn_modelMIXED300.pth'".format(epochs, lr))
+torch.save(cluster_model.state_dict(), 'cluster_modelMIXED300.pth'.format(epochs, lr))
 print("Model saved as 'gcn_modelMIXED300.pth'".format(epochs, lr))

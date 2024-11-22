@@ -66,5 +66,5 @@ def sample_and_display_graphs(num_samples=5, file_path='300_nodes_pregenerated_g
 
 if __name__ == "__main__":
     
-    generate_and_save_graphs()
-    # sample_and_display_graphs(30)
+    # generate_and_save_graphs()
+    sample_and_display_graphs(30)

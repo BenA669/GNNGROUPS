@@ -17,4 +17,15 @@ class GCN(torch.nn.Module):
         x = self.gc2(x, adj)
 
         return F.log_softmax(x, dim=1)
+    
+class ClusterPredictor(torch.nn.Module):
+    def __init__(self, input_dim):
+        super(ClusterPredictor, self).__init__()
+        self.fc1 = torch.nn.Linear(input_dim, 64)
+        self.fc2 = torch.nn.Linear(64, 1)  # Output a single value for the number of clusters
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
         

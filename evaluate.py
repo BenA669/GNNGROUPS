@@ -1,5 +1,5 @@
 import torch
-from model import GCN
+from model import GCN, ClusterPredictor
 from makeDataset import makeDataSetCUDA, plot_dataset
 import statistics
 from tqdm import tqdm
@@ -119,16 +119,20 @@ def InfoNCELoss(output, labels):
     loss = loss.mean()
 
     return loss
-def outputToLabels(output, labels):
+def outputToLabels(output, labels, modelCluster):
     # n_clusters = 2  # Set the number of clusters you expect
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
+    n_clusters = modelCluster(output)
+    # print("{} Predicted clusters".format(n_clusters))
+    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
+    # hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=5, metric='euclidean')
 
-    # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-    hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=5, metric='euclidean')
+    # predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)
+    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy())).to(device=device)
 
-    predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)
     return findRightPerm(predicted_labels, labels)
 
 def eval(model, amt, graphs):
@@ -157,26 +161,33 @@ def eval(model, amt, graphs):
 
 # Load data
 if __name__ == '__main__':
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Evaluate GCN model.')
     parser.add_argument('--i', type=int, default=1000, help='Number of iterations for evaluation')
     parser.add_argument('--m', type=str, default=1000, help='Model')
+    parser.add_argument('--k', type=str, default=1000, help='Cluster')
     parser.add_argument('--c', action='store_true')
     parser.add_argument('--n', action='store_true')
     args = parser.parse_args()
 
     # Load the model
-    model = GCN(2, 64, 16)
+    model = GCN(2, 64, 16).to(device)
     model.load_state_dict(torch.load(args.m))
     # model.load_state_dict(torch.load('gcn_model.pth'))
     model.eval()
     print("Model loaded successfully.")
 
-    
+    modelCluster = ClusterPredictor(16).to(device)
+    modelCluster.load_state_dict(torch.load(args.k))
+
+    modelCluster.eval()
+
     # Evaluate the model
     iterations = args.i
 
-    # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
+    # graphs = torch.load('Datasets/3_groups_300_nodes_pregenerated_graphs_validation.pt')
     graphs = torch.load('300_nodes_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
@@ -198,7 +209,7 @@ if __name__ == '__main__':
             # predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
             # # Find right permutation
             # predicted_labels, correct_predictions = findRightPerm(predicted_labels, labels.numpy())
-            predicted_labels, accuracy = outputToLabels(output, labels)
+            predicted_labels, accuracy = outputToLabels(output, labels, modelCluster)
 
         # Calculate accuracy
         total_predictions = labels.size(0)
@@ -209,7 +220,7 @@ if __name__ == '__main__':
             print("True Labels:", labels)
             print(f'Accuracy of the model: {accuracy:.2f}%')
             plot_dataset(data, adj, all_nodes, labels, predicted_labels)
-
+    
     print(f'Accuracy of the model: {accuracy:.2f}%')
     print("Predicted Labels:", predicted_labels)
     print("True Labels:", labels)

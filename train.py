@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 # Check if GPU is available and set the device accordingly
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print("Using Device: {}".format(device))
 
 graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
 graphs_validation = torch.load('2_groups_100_nodes_pregenerated_graphs.pt')
@@ -28,6 +29,13 @@ hidden_dim1 = 32
 hidden_dim2 = 5
 
 model = GCN(input_dim, hidden_dim1, hidden_dim2).to(device)
+
+if torch.cuda.device_count() > 1:
+    print(f"Using {torch.cuda.device_count()} GPUs")
+    model = torch.nn.DataParallel(model)
+
+model = model.to(device)
+
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 # Add a learning rate scheduler
@@ -62,7 +70,6 @@ for epoch in tqdm(range(epochs)):
         loss = InfoNCELoss(output, labels)
         loss.backward()
         batch_loss += loss.item()
-    
     # Update weights
     optimizer.step()
 
@@ -80,5 +87,11 @@ for epoch in tqdm(range(epochs)):
         print("Evaluation: {}".format(eval(model, 1000, graphs_validation)))
 
 
-torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
-print("Model saved as 'gcn_model{}BatchLR{}SCHED.pth'".format(epochs, lr))
+# torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
+# print("Model saved as 'gcn_model{}BatchLR{}SCHED.pth'".format(epochs, lr))
+
+# Save the model (DataParallel adds a module prefix, handle appropriately)
+if isinstance(model, torch.nn.DataParallel):
+    torch.save(model.module.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))
+else:
+    torch.save(model.state_dict(), 'gcn_model{}BatchLR{}SCHED.pth'.format(epochs, lr))

@@ -52,38 +52,33 @@ def InfoNCELoss(output, labels):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     embeddings = output
     
-    # Get the batch size and temperature
+    # Get batch size and temperature
     batch_size = embeddings.size(0)
     temperature = 0.1
 
     # Get masks for same and different groups
     same_group_mask, diff_group_mask = findSameGroups(labels)
-
-    # Remove self similarity from same group mask
-    same_group_mask.fill_diagonal_(False)
+    same_group_mask.fill_diagonal_(False)  # Remove self-similarity from positive mask
 
     # Calculate similarity matrix (batch_size x batch_size)
     similarity_matrix = F.cosine_similarity(embeddings.unsqueeze(1), embeddings.unsqueeze(0), dim=-1)
 
-    # Select positive and negative examples for each anchor
-    positives = torch.zeros(batch_size, device=device)
-    negatives = torch.zeros(batch_size, device=device)
+    # Extract positive similarities
+    positive_similarities = similarity_matrix[same_group_mask].view(batch_size, -1)
+    
+    # Extract negative similarities
+    negative_similarities = similarity_matrix[diff_group_mask].view(batch_size, -1)
 
-    for i in range(batch_size):
-        # Get positive and negative indices
-        pos_indices = torch.nonzero(same_group_mask[i]).squeeze(1)
-        neg_indices = torch.nonzero(diff_group_mask[i]).squeeze(1)
+    # Ensure there are positive examples for all anchors
+    assert positive_similarities.size(1) > 0, "No positive examples found for anchors."
 
-        if len(pos_indices) == 0:
-            continue  # Skip if no positive examples
+    # Randomly select one positive similarity per anchor
+    random_pos_idx = torch.randint(0, positive_similarities.size(1), (batch_size,), device=device)
+    positives = positive_similarities[torch.arange(batch_size, device=device), random_pos_idx]
 
-        # Randomly select a positive and negative example
-        pos_idx = pos_indices[torch.randint(0, len(pos_indices), (1,), device=device)]
-        neg_idx = neg_indices[torch.randint(0, len(neg_indices), (1,), device=device)]
-
-        # Get similarity scores for selected positive and negative
-        positives[i] = similarity_matrix[i, pos_idx]
-        negatives[i] = similarity_matrix[i, neg_idx]
+    # Randomly select one negative similarity per anchor
+    random_neg_idx = torch.randint(0, negative_similarities.size(1), (batch_size,), device=device)
+    negatives = negative_similarities[torch.arange(batch_size, device=device), random_neg_idx]
 
     # InfoNCE loss calculation
     numerator = torch.exp(positives / temperature)
@@ -121,8 +116,8 @@ def eval(model, amt, graphs):
         accuracy = (correct_predictions / total_predictions) * 100
         accTotal.append(accuracy)
 
-    print(predicted_labels)
-    print(labels)
+    # print(predicted_labels)
+    # print(labels)
 
     return statistics.mean(accTotal)
 

@@ -8,13 +8,14 @@ import statistics
 import os.path
 from tqdm import tqdm
 
-if (os.path.isfile("pregenerated_graphs.pt")):
-    graphs = torch.load('pregenerated_graphs.pt')
-else:
-    print("No preGenGraphs found, generating... ")
-    generate_and_save_graphs()
+# if (os.path.isfile("pregenerated_graphs.pt")):
+#     graphs = torch.load('pregenerated_graphs.pt')
+# else:
+#     print("No preGenGraphs found, generating... ")
+#     generate_and_save_graphs()
 
-graphs_validation = torch.load('pregenerated_graphs_validation.pt')
+graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
+graphs_validation = torch.load('2_groups_100_nodes_pregenerated_graphs.pt')
 
 # Initialize model, criterion, and optimizer
 lr = 0.001

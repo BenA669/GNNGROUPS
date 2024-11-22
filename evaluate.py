@@ -12,6 +12,7 @@ from itertools import permutations
 # 96.3447 Acc after 10,000 iterations
 
 def generate_swapped_sequences(original_sequence):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Step 1: Identify the distinct numbers in the original sequence
     distinct_elements, _ = torch.unique(original_sequence, sorted=False, return_inverse=True)
     
@@ -22,7 +23,7 @@ def generate_swapped_sequences(original_sequence):
     swapped_sequences = []
     for perm in distinct_permutations:
         mapping = dict(zip(distinct_elements.tolist(), perm.tolist()))
-        swapped_sequence = torch.tensor([mapping[element.item()] for element in original_sequence])
+        swapped_sequence = torch.tensor([mapping[element.item()] for element in original_sequence], device=device)
         swapped_sequences.append(swapped_sequence)
     
     return swapped_sequences

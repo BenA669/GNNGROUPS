@@ -118,6 +118,9 @@ def compute_laplacian(adj):
     """Compute the Laplacian of the adjacency matrix."""
     device = adj.device
     # Degree matrix
+
+    adj = adj.float()
+
     degree = torch.sum(adj, dim=1)
     D = torch.diag(degree).to(device)
 
@@ -127,6 +130,8 @@ def compute_laplacian(adj):
 
 def eigengap_heuristic(L):
     """Apply Eigengap Heuristic to determine optimal number of clusters."""
+
+    L = L.float()
     # Compute eigenvalues and eigenvectors
     eigenvalues, _ = torch.linalg.eigh(L)  # Using eigh for symmetric matrices like Laplacian
 

@@ -147,14 +147,14 @@ def eigengap_heuristic(L):
 
 def outputToLabels(output, labels):
     # n_clusters = 2  # Set the number of clusters you expect
-
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     L = compute_laplacian(adj)
 
     n_clusters = eigengap_heuristic(L)
     print(f"Optimal number of clusters determined by Eigengap Heuristic: {n_clusters}")
 
     spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy()))
+    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy()), device=device)
     return findRightPerm(predicted_labels, labels)
 
 def eval(model, amt, graphs):

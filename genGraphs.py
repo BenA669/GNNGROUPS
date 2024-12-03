@@ -6,9 +6,11 @@ def generate_and_save_graphs2(num_graphs=10000, groupsAmount=2, nodeAmount=200, 
     graphs = []
 
     connectedThreshold = 0
-    intra_group_prob=0.4
-    inter_group_prob=0.005
+    intra_group_prob=0.8
+    inter_group_prob=0.1
     nodeNeighborStdDev = 2
+
+    # 0.4 intra 0.005 inter: 89 % acc
     
     # data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
 
@@ -17,14 +19,14 @@ def generate_and_save_graphs2(num_graphs=10000, groupsAmount=2, nodeAmount=200, 
         data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
         graphs.append((data, adj, all_nodes, labels))
     
-    torch.save(graphs, '{}_groups_{}_nodes_{}_NNSTD_pregenerated_graphs.pt'.format(groupsAmount, nodeAmount, nodeNeighborStdDev))
+    torch.save(graphs, '{}_groups_{}_nodes_{}_NNSTD_{}_{}_pregenerated_graphs.pt'.format(groupsAmount, nodeAmount, nodeNeighborStdDev, intra_group_prob, inter_group_prob))
 
     graphs_validation = []
     for _ in tqdm(range(num_graphs)):
         data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
         graphs_validation.append((data, adj, all_nodes, labels))
     
-    torch.save(graphs_validation, '{}_groups_{}_nodes_{}_NNSTD_pregenerated_graphs_validation.pt'.format(groupsAmount, nodeAmount,nodeNeighborStdDev))
+    torch.save(graphs_validation, '{}_groups_{}_nodes_{}_NNSTD_{}_{}_pregenerated_graphs_validation.pt'.format(groupsAmount, nodeAmount,nodeNeighborStdDev, intra_group_prob, inter_group_prob))
 
 def generate_and_save_graphs(num_graphs=10000, nodeAmount=300, maxGroups=6):
     # Precompute all possible divisors of nodeAmount
@@ -77,3 +79,4 @@ if __name__ == "__main__":
     
     generate_and_save_graphs2()
     # sample_and_display_graphs(30)
+    

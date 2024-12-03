@@ -18,8 +18,8 @@ from tqdm import tqdm
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("Using Device: {}".format(device))
 
-graphs = torch.load('2_groups_200_nodes_2_NNSTD_pregenerated_graphs.pt')
-graphs_validation = torch.load('2_groups_200_nodes_2_NNSTD_pregenerated_graphs_validation.pt')
+graphs = torch.load('2_groups_200_nodes_2_NNSTD_0.8_0.1_pregenerated_graphs.pt')
+graphs_validation = torch.load('2_groups_200_nodes_2_NNSTD_0.8_0.1_pregenerated_graphs_validation.pt')
 
 # Initialize model, criterion, and optimizer
 lr = 0.001

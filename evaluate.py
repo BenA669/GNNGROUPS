@@ -206,7 +206,7 @@ if __name__ == '__main__':
     # graphs = torch.load('Datasets/3_groups_300_nodes_pregenerated_graphs_validation.pt')
     # graphs = torch.load('300_nodes_pregenerated_graphs_validation.pt')
     # graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
-    graphs = torch.load('2_groups_200_nodes_2_NNSTD_pregenerated_graphs_validation.pt')
+    graphs = torch.load('2_groups_200_nodes_2_NNSTD_0.8_0.1_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)

@@ -353,12 +353,16 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
     return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
 if __name__ == "__main__":
-    groupsAmount = 5
-    nodeAmount = 500
-    iterations = 100
+    groupsAmount = 2
+    nodeAmount = 200
+    iterations = 1
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
     # data, adj, all_nodes, labels = makeDataSetCUDA(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
-    data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+    data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=2)
+
+    # Node each uniform random
+    # Different types of distribution
+    # Constraint nodes
     
 
     # # Time the execution of makeDataSet

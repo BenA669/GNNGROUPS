@@ -2,20 +2,20 @@ import torch
 from makeDataset import makeDataSetCUDA, plot_dataset
 from tqdm import tqdm
 
-def generate_and_save_graphs2(num_graphs=10000, groupsAmount=3, nodeAmount=300):
+def generate_and_save_graphs2(num_graphs=10000, groupsAmount=2, nodeAmount=200, nodeNeighborStdDev = 2):
     graphs = []
     for _ in tqdm(range(num_graphs)):
-        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev)
         graphs.append((data, adj, all_nodes, labels))
     
-    torch.save(graphs, '{}_groups_{}_nodes_pregenerated_graphs.pt'.format(groupsAmount, nodeAmount))
+    torch.save(graphs, '{}_groups_{}_nodes_{}_NNSTD_pregenerated_graphs.pt'.format(groupsAmount, nodeAmount, nodeNeighborStdDev))
 
     graphs_validation = []
     for _ in tqdm(range(num_graphs)):
-        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount)
+        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev)
         graphs_validation.append((data, adj, all_nodes, labels))
     
-    torch.save(graphs_validation, '{}_groups_{}_nodes_pregenerated_graphs_validation.pt'.format(groupsAmount, nodeAmount))
+    torch.save(graphs_validation, '{}_groups_{}_nodes_{}_NNSTD_pregenerated_graphs_validation.pt'.format(groupsAmount, nodeAmount,nodeNeighborStdDev))
 
 def generate_and_save_graphs(num_graphs=10000, nodeAmount=300, maxGroups=6):
     # Precompute all possible divisors of nodeAmount
@@ -66,5 +66,5 @@ def sample_and_display_graphs(num_samples=5, file_path='300_nodes_pregenerated_g
 
 if __name__ == "__main__":
     
-    # generate_and_save_graphs()
-    sample_and_display_graphs(30)
+    generate_and_save_graphs2()
+    # sample_and_display_graphs(30)

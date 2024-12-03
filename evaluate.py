@@ -123,23 +123,26 @@ def InfoNCELoss(output, labels):
     loss = loss.mean()
 
     return loss
-def outputToLabels(output, labels, modelCluster):
+def outputToLabels(output, labels):
     # n_clusters = 2  # Set the number of clusters you expect
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Assuming the output is of shape (300, 1)
-    cluster_output = modelCluster(output)  # Shape: [300, 1]
+    # # Assuming the output is of shape (300, 1)
+    # cluster_output = modelCluster(output)  # Shape: [300, 1]
 
-    # Find the index of the maximum value
-    _, max_index = torch.max(cluster_output, dim=0)
+    # # Find the index of the maximum value
+    # _, max_index = torch.max(cluster_output, dim=0)
 
-    # Convert the max_index to an integer
-    n_clusters = int(max_index.item()) + 1
+    # # Convert the max_index to an integer
+    # n_clusters = int(max_index.item()) + 1
+
+    n_clusters = 2
 
     # print(n_clusters.shape)
     # print("{} Predicted clusters".format(n_clusters))
-    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='rbf', random_state=42)
+    # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='rbf', random_state=42)
+    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
     # hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=5, metric='euclidean')
 
     # predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)
@@ -147,7 +150,7 @@ def outputToLabels(output, labels, modelCluster):
 
     return findRightPerm(predicted_labels, labels)
 
-def eval(model, cluster_model, amt, graphs):
+def eval(model, amt, graphs):
     
     model.eval()
     # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
@@ -161,7 +164,7 @@ def eval(model, cluster_model, amt, graphs):
         data, adj, all_nodes, labels = graphs[i]
         output = model(all_nodes.float(), adj.float())
         
-        predicted_labels, accuracy = outputToLabels(output, labels, cluster_model)
+        predicted_labels, accuracy = outputToLabels(output, labels)
 
         # Calculate accuracy
         accTotal.append(accuracy)
@@ -186,21 +189,23 @@ if __name__ == '__main__':
 
     # Load the model
     model = GCN(2, 64, 16).to(device)
+    # model = GCN(2, 32, 5).to(device)
     model.load_state_dict(torch.load(args.m))
     # model.load_state_dict(torch.load('gcn_model.pth'))
     model.eval()
     print("Model loaded successfully.")
 
-    modelCluster = ClusterPredictor(16).to(device)
-    modelCluster.load_state_dict(torch.load(args.k))
+    # modelCluster = ClusterPredictor(16).to(device)
+    # modelCluster.load_state_dict(torch.load(args.k))
 
-    modelCluster.eval()
+    # modelCluster.eval()
 
     # Evaluate the model
     iterations = args.i
 
     # graphs = torch.load('Datasets/3_groups_300_nodes_pregenerated_graphs_validation.pt')
-    graphs = torch.load('300_nodes_pregenerated_graphs_validation.pt')
+    # graphs = torch.load('300_nodes_pregenerated_graphs_validation.pt')
+    graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)
@@ -221,7 +226,7 @@ if __name__ == '__main__':
             # predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
             # # Find right permutation
             # predicted_labels, correct_predictions = findRightPerm(predicted_labels, labels.numpy())
-            predicted_labels, accuracy = outputToLabels(output, labels, modelCluster)
+            predicted_labels, accuracy = outputToLabels(output, labels)
 
         # Calculate accuracy
         total_predictions = labels.size(0)

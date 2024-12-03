@@ -4,15 +4,24 @@ from tqdm import tqdm
 
 def generate_and_save_graphs2(num_graphs=10000, groupsAmount=2, nodeAmount=200, nodeNeighborStdDev = 2):
     graphs = []
+
+    connectedThreshold = 0
+    intra_group_prob=0.4
+    inter_group_prob=0.005
+    nodeNeighborStdDev = 2
+    
+    # data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
+
+
     for _ in tqdm(range(num_graphs)):
-        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev)
+        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
         graphs.append((data, adj, all_nodes, labels))
     
     torch.save(graphs, '{}_groups_{}_nodes_{}_NNSTD_pregenerated_graphs.pt'.format(groupsAmount, nodeAmount, nodeNeighborStdDev))
 
     graphs_validation = []
     for _ in tqdm(range(num_graphs)):
-        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev)
+        data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
         graphs_validation.append((data, adj, all_nodes, labels))
     
     torch.save(graphs_validation, '{}_groups_{}_nodes_{}_NNSTD_pregenerated_graphs_validation.pt'.format(groupsAmount, nodeAmount,nodeNeighborStdDev))

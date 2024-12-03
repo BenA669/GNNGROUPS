@@ -106,7 +106,7 @@ for epoch in tqdm(range(epochs)):
         # print("Evaluation: {}".format(eval(model, cluster_model, 1000, graphs_validation)))
 
 
-torch.save(model.state_dict(), 'gcn_modelMIXED300.pth'.format(epochs, lr))
-print("Model saved as 'gcn_modelMIXED300.pth'".format(epochs, lr))
-torch.save(cluster_model.state_dict(), 'cluster_modelMIXED300.pth'.format(epochs, lr))
-print("Model saved as 'gcn_modelMIXED300.pth'".format(epochs, lr))
+torch.save(model.state_dict(), 'gcn_modelHARD.pth'.format(epochs, lr))
+print("Model saved as 'gcn_modelHARD.pth'".format(epochs, lr))
+# torch.save(cluster_model.state_dict(), 'cluster_modelMIXED300.pth'.format(epochs, lr))
+# print("Model saved as 'gcn_modelMIXED300.pth'".format(epochs, lr))

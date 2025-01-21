@@ -12,6 +12,7 @@ def generate_and_save_graphs2(num_graphs=10000, groupsAmount=2, nodeAmount=200, 
 
     # 0.4 intra 0.005 inter: 89 % acc
     
+    # 0.8 intra 0.1 inter: 91 % acc
     # data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
 
 

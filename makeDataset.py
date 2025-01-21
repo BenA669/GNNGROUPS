@@ -49,6 +49,9 @@ def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_
     # Plot the edges
     nx.draw_networkx_edges(G, pos, alpha=0.1, edge_color='gray')
 
+
+    
+
     # Plot settings
     plt.xlabel("Dimension 1")
     plt.ylabel("Dimension 2")
@@ -304,10 +307,15 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
             p = torch.rand(1, generator=rng, device=device).item()
 
             if p < nodeNeighborBaseProb:
-                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+                # data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+                point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
             else:
                 outliers.append((group, node))
-                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+                # data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+                point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+
+            # Clamp to [0,1]
+            data[group, node] = point
 
         all_group_averages.append(group_average)
 

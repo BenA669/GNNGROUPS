@@ -29,8 +29,8 @@ def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_
     pos = {i: node_positions[i] for i in range(len(node_positions))}
     
     # Set up the plot
-    plt.figure(figsize=(10, 10))
-    plt.title("Scatter Plot with Incorrect Labels Highlighted")
+    fig = plt.figure(figsize=(10, 10)) 
+    plt.title("Predicted Groups")
 
     # Plot nodes based on true labels
     colors = ['blue', 'green', 'orange', 'purple', 'brown', 'pink', 'grey', 'cyan'][:num_groups]
@@ -47,14 +47,33 @@ def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_
             plt.scatter(incorrect_positions[:, 0], incorrect_positions[:, 1], color='red', alpha=0.2, s=100, label='Incorrect Predictions')
 
     # Plot the edges
-    nx.draw_networkx_edges(G, pos, alpha=0.1, edge_color='gray')
+    # nx.draw_networkx_edges(G, pos, alpha=0.1, edge_color='gray')
 
 
-    
+    # Draw edges manually
+    for i in range(len(adjacency_matrix)):
+        for j in range(i + 1, len(adjacency_matrix)):
+            if adjacency_matrix[i, j] == 1:
+                # Draw a line between the nodes i and j
+                plt.plot(
+                    [node_positions[i, 0], node_positions[j, 0]],
+                    [node_positions[i, 1], node_positions[j, 1]],
+                    color='gray',
+                    alpha=0.3,
+                    linewidth=0.07
+                )
+
+    plt.axis("on")
+
+    # plt.xticks(np.arange(min(node_positions[:, 0]), max(node_positions[:, 0]) + 1, step=1))
+    # plt.yticks(np.arange(min(node_positions[:, 1]), max(node_positions[:, 1]) + 1, step=1))
+
+    plt.xticks([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
+    plt.yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
 
     # Plot settings
-    plt.xlabel("Dimension 1")
-    plt.ylabel("Dimension 2")
+    plt.xlabel("X")
+    plt.ylabel("Y")
     plt.legend()
     plt.show()
 
@@ -265,21 +284,24 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
 
     # Generate subsequent group seed points with randomness while ensuring minimum distance
     for group in range(1, groupsAmount):
-        successful = False
+        data[group, 0] = torch.rand(nodeDim, generator=rng, device=device)
 
-        # Attempt to generate a new seed point with sufficient distance from previous seeds
-        for i in range(10):  # Limit attempts to avoid infinite loops
-            candidate_position = torch.rand(nodeDim, generator=rng, device=device)
-            distances = torch.linalg.norm(candidate_position - data[:group, 0], dim=1)
-            if torch.min(distances) > repulsion_factor:
-                data[group, 0] = candidate_position
-                successful = True
-                break
 
-        # If we couldn't find a suitable candidate after 100 attempts, adjust to the closest valid position
-        if not successful:
-            farthest_seed = data[:group, 0] + torch.randn_like(data[:group, 0]) * repulsion_factor
-            data[group, 0] = farthest_seed.mean(dim=0)
+        # successful = False
+
+        # # Attempt to generate a new seed point with sufficient distance from previous seeds
+        # for i in range(10):  # Limit attempts to avoid infinite loops
+        #     candidate_position = torch.rand(nodeDim, generator=rng, device=device)
+        #     distances = torch.linalg.norm(candidate_position - data[:group, 0], dim=1)
+        #     if torch.min(distances) > repulsion_factor:
+        #         data[group, 0] = candidate_position
+        #         successful = True
+        #         break
+
+        # # If we couldn't find a suitable candidate after 100 attempts, adjust to the closest valid position
+        # if not successful:
+        #     farthest_seed = data[:group, 0] + torch.randn_like(data[:group, 0]) * repulsion_factor
+        #     data[group, 0] = farthest_seed.mean(dim=0)
 
     for group in range(groupsAmount):
         # if group == 0:
@@ -306,15 +328,21 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
 
             p = torch.rand(1, generator=rng, device=device).item()
 
-            if p < nodeNeighborBaseProb:
-                # data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
-                point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
-            else:
-                outliers.append((group, node))
-                # data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
-                point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+            # if p < nodeNeighborBaseProb:
+            #     # data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+            #     point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+            # else:
+            #     outliers.append((group, node))
+            #     # data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+            #     point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
 
-            # Clamp to [0,1]
+            # point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+            while True:
+                point = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
+                if 0 < point[0] < 1 and 0 < point[1] < 1:
+                    break
+            
+
             data[group, node] = point
 
         all_group_averages.append(group_average)
@@ -339,7 +367,7 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
 
     # Calculate probabilities for intra and inter group links
     probabilities = torch.where(intra_mask, intra_group_prob / (1 + distances), inter_group_prob / (1 + distances))
-    probabilities = torch.where(distances <= connectedThreshold, probabilities * 2, probabilities)
+    # probabilities = torch.where(distances <= connectedThreshold, probabilities * 2, probabilities)
 
     # Randomize connections based on probabilities (efficiently, on GPU)
     random_probs = torch.rand((nodeAmount, nodeAmount), generator=rng, device=device)
@@ -361,16 +389,32 @@ def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseP
     return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
 if __name__ == "__main__":
-    groupsAmount = 2
-    nodeAmount = 200
-    iterations = 1
+
     connectedThreshold = 0
-    intra_group_prob=0.4
-    inter_group_prob=0.005
-    nodeNeighborStdDev = 2
+    intra_group_prob=0.8
+    inter_group_prob=0.1
+    nodeNeighborStdDev = 0.23
+    groupsAmount=2
+    nodeAmount=200
+
+
+    data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
+
+    plot_dataset(data, adj, all_nodes, labels)
+
+    # groupsAmount = 2
+    # nodeAmount = 200
+    # iterations = 1
+    # connectedThreshold = 0
+    # intra_group_prob=0.4
+    # inter_group_prob=0.005
+    # nodeNeighborStdDev = 2
+
+    
     # data, adj, all_nodes, labels = makeDataSet(groupsAmount=2, intra_group_prob=0.1, inter_group_prob=0.01)
     # data, adj, all_nodes, labels = makeDataSetCUDA(nodeNeighborStdDev=0.2, nodeNeighborBaseProb = 1, nodeAmount=nodeAmount, groupsAmount=groupsAmount, repulsion_factor=0.5)
-    data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
+
+    # data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=groupsAmount, nodeAmount=nodeAmount, nodeNeighborStdDev=nodeNeighborStdDev, connectedThreshold = connectedThreshold, intra_group_prob=intra_group_prob, inter_group_prob=inter_group_prob)
 
     # Node each uniform random
     # Different types of distribution
@@ -399,4 +443,4 @@ if __name__ == "__main__":
     # print(f"makeDataSet execution time: {makeDataSet_time:.4f} seconds")
     # print(f"makeDataSetOLD execution time: {makeDataSetOLD_time:.4f} seconds")
     # print(f"makeDataSetCUDA execution time: {makeDataSetCUDA_time:.4f} seconds")
-    plot_dataset(data, adj, all_nodes, labels)
+    

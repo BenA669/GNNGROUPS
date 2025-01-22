@@ -183,8 +183,8 @@ if __name__ == '__main__':
     parser.add_argument('--i', type=int, default=1000, help='Number of iterations for evaluation')
     parser.add_argument('--m', type=str, default=1000, help='Model')
     parser.add_argument('--k', type=str, default=1000, help='Cluster')
-    parser.add_argument('--c', action='store_true')
-    parser.add_argument('--n', action='store_true')
+    parser.add_argument('--c', action='store_true', help="Continuous?")
+    parser.add_argument('--n', action='store_true', help="Gen New?")
     args = parser.parse_args()
 
     # Load the model
@@ -206,7 +206,7 @@ if __name__ == '__main__':
     # graphs = torch.load('Datasets/3_groups_300_nodes_pregenerated_graphs_validation.pt')
     # graphs = torch.load('300_nodes_pregenerated_graphs_validation.pt')
     # graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
-    graphs = torch.load('2_groups_200_nodes_2_NNSTD_0.8_0.1_pregenerated_graphs_validation.pt')
+    graphs = torch.load('2_groups_200_nodes_2_NNSTD_0.8_0.1_pregenerated_graphs_validation_hard.pt')
 
     _, _, _, labels = graphs[0]
     total_predictions = labels.size(0)

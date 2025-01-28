@@ -6,22 +6,18 @@ import networkx as nx
 from tqdm import tqdm
 from sklearn.manifold import TSNE
 
-
-def plot_embeddings(features):
-    fig = plt.figure()
-    plt.scatter(features[:, 0], features[:, 1])
-    plt.show()
-
 # Convert tensors to numpy for plotting
 def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_labels=None, model_embeddings=None):
 
-    tsneEmbed = TSNE().fit_transform(model_embeddings.cpu())
+    if model_embeddings is not None:
+        tsneEmbed = TSNE().fit_transform(model_embeddings.cpu())
+    else:
+        tsneEmbed = None        
 
     data = data.cpu().numpy()
     adjacency_matrix = adjacency_matrix.cpu().numpy()
     node_positions = node_positions.cpu().numpy()
     true_labels = true_labels.cpu().numpy()
-    print(true_labels)
     if predicted_labels is not None and type(predicted_labels) == torch.Tensor:
         predicted_labels = predicted_labels.cpu().numpy()
 
@@ -74,195 +70,25 @@ def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_
     plt.ylabel("Y")
     plt.legend()
 
-    fig2 = plt.figure(figsize=(10, 10)) 
-    # for feature in tsneEmbed:
+    if tsneEmbed is not None:
+        fig2 = plt.figure(figsize=(10, 10)) 
+        plt.title("Model Output Embeddings Visualized")
+        # for feature in tsneEmbed:
+        
+        # for i in range(len(tsneEmbed)):
+        #     if true_labels
 
-    plt.scatter(tsneEmbed[:, 0], tsneEmbed[:, 1])
+        for group in range(num_groups):
+            group_nodes = [i for i in range(len(true_labels)) if true_labels[i] == group]
+            groupedTsneEmbed = tsneEmbed[group_nodes]
+            plt.scatter(groupedTsneEmbed[:, 0], groupedTsneEmbed[:, 1], label=f"Group {group}", alpha=0.8, color=colors[group%8])
 
+
+    # plt.scatter(tsneEmbed[:, 0], tsneEmbed[:, 1])
+    plt.legend()
     plt.show()
 
-def makeDataSetOLD(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
-    if nodeAmount % groupsAmount != 0:
-        print("Node amount must be divisible by groups amount")
-        return
-    rng = np.random.default_rng()  # Generates different Seed every time
-    nodePerGroup = int(nodeAmount // groupsAmount)
 
-    data = np.zeros(shape=(groupsAmount, nodePerGroup, nodeDim), dtype=float)
-    outliers = list()
-    allGroupAverages = list()
-    for group in range(groupsAmount):
-        if group == 0:
-            data[group, 0] = rng.random(nodeDim)
-        else:
-            # Attempt to place the seed node further from other groups
-            while True:
-                candidate_position = rng.random(nodeDim)
-                min_distance = min(
-                    np.linalg.norm(candidate_position - data[other_group, 0])
-                    for other_group in range(group)
-                )
-                if min_distance > repulsion_factor:
-                    data[group, 0] = candidate_position
-                    break
-
-        groupAverage = data[group, 0]
-        for node in range(1, nodePerGroup):
-            # Get running Average of group every 10%:
-            if node % (nodePerGroup / 10) == 0:
-                for dim in range(nodeDim):
-                    if (len(data[group][0:node-1]) > 1):
-                        # print(data[group][0:node-1][:, dim])
-                        groupAverage[dim] = np.mean(data[group][0:node-1][:, dim])
-                # print("Running GA: {}".format(groupAverage))
-                
-            p = rng.random() # 0, 1
-            # p = 0
-            if (p < nodeNeighborBaseProb):            
-                for dim in range(nodeDim):
-                    data[group, node, dim] = rng.normal(loc=groupAverage[dim], scale=nodeNeighborStdDev)
-            else:
-                #Seperate Calc
-                # Mark outlier
-                outliers.append(node)
-                for dim in range(nodeDim):
-                    data[group, node, dim] = rng.normal(loc=groupAverage[dim], scale=nodeNeighborStdDev)
-
-        allGroupAverages.append(groupAverage)
-    # Make outliers
-    average_array = np.mean(allGroupAverages, axis=0)
-    for group in range(groupsAmount):
-        for node in outliers:
-            data[group, node] = rng.normal(loc=average_array, scale=nodeNeighborStdDev)
-
-    # Combine all nodes into one array
-    all_nodes = data.reshape(nodeAmount, nodeDim)
-
-    # Create adjacency matrix based on probabilities
-    adjacency_matrix = np.zeros((nodeAmount, nodeAmount), dtype=int)
-
-    # Build adjacency matrix based on both distance threshold and group probabilities
-    for i in range(nodeAmount):
-        for j in range(i + 1, nodeAmount):
-            group_i = i // nodePerGroup
-            group_j = j // nodePerGroup
-
-            # Calculate the Euclidean distance between nodes i and j
-            distance = np.linalg.norm(all_nodes[i] - all_nodes[j])
-
-            
-
-            if group_i == group_j:
-                prob = intra_group_prob / (1 + distance)  # Decrease probability with distance
-            else:
-                prob = inter_group_prob / (1 + distance)  # Decrease probability with distance
-            
-            if distance <= connectedThreshold:
-                # Assign higher probability if nodes are in the same group, otherwise lower probability
-                prob *= 2
-
-            # Determine if the nodes should be connected
-            if rng.random() < prob:
-                adjacency_matrix[i, j] = 1
-                adjacency_matrix[j, i] = 1  # Symmetric matrix
-    # makePlot(data, groupsAmount, adjacency_matrix, all_nodes)
-
-    labels = np.array([i // (nodeAmount // groupsAmount) for i in range(nodeAmount)])
-
-    all_nodes = torch.from_numpy(all_nodes)
-    labels = torch.from_numpy(labels).long()
-    adjacency_matrix = torch.from_numpy(adjacency_matrix)
-    data = torch.from_numpy(data)
-
-    shuffle_indices = torch.randperm(all_nodes.size(0))
-    shuffled_all_nodes = all_nodes[shuffle_indices]
-    shuffled_labels = labels[shuffle_indices]
-
-    shuffled_adj = adjacency_matrix[shuffle_indices][:, shuffle_indices]
-    
-    # print(adjacency_matrix)
-    # print(shuffled_adj)
-    return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
-    # return torch.from_numpy(data), adjacency_matrix, all_nodes, labels
-
-
-def makeDataSet(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):
-    rng = torch.Generator().manual_seed(torch.seed())  # Generates different seed every time
-    node_per_group = nodeAmount // groupsAmount
-
-    data = torch.zeros((groupsAmount, node_per_group, nodeDim), dtype=torch.float32)
-    outliers = []
-    all_group_averages = []
-
-    for group in range(groupsAmount):
-        if group == 0:
-            data[group, 0] = torch.rand(nodeDim, generator=rng)
-        else:
-            while True:
-                candidate_position = torch.rand(nodeDim, generator=rng)
-                min_distance = torch.min(torch.linalg.norm(candidate_position - data[:group, 0], dim=1))
-                if min_distance > repulsion_factor:
-                    data[group, 0] = candidate_position
-                    break
-
-        group_average = data[group, 0].clone()
-        
-        for node in range(1, node_per_group):
-            # Running average update every 10% of nodes
-            if node % (node_per_group // 10) == 0:
-                group_average = torch.mean(data[group, :node], dim=0)
-
-            p = torch.rand(1, generator=rng).item()
-
-            if p < nodeNeighborBaseProb:
-                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
-            else:
-                outliers.append((group, node))
-                data[group, node] = torch.normal(mean=group_average, std=nodeNeighborStdDev, generator=rng)
-
-        all_group_averages.append(group_average)
-
-    # Create outliers using global average
-    average_array = torch.mean(torch.stack(all_group_averages), dim=0)
-    for group, node in outliers:
-        data[group, node] = torch.normal(mean=average_array, std=nodeNeighborStdDev, generator=rng)
-
-    # Combine all nodes into one array
-    all_nodes = data.view(nodeAmount, nodeDim)
-
-    # Create adjacency matrix based on distances and group probabilities
-    adjacency_matrix = torch.zeros((nodeAmount, nodeAmount), dtype=torch.int32)
-    
-    for i in range(nodeAmount):
-        for j in range(i + 1, nodeAmount):
-            group_i = i // node_per_group
-            group_j = j // node_per_group
-
-            # Calculate the Euclidean distance between nodes i and j
-            distance = torch.linalg.norm(all_nodes[i] - all_nodes[j])
-
-            if group_i == group_j:
-                prob = intra_group_prob / (1 + distance)
-            else:
-                prob = inter_group_prob / (1 + distance)
-
-            if distance <= connectedThreshold:
-                prob *= 2
-
-            if torch.rand(1, generator=rng).item() < prob:
-                adjacency_matrix[i, j] = 1
-                adjacency_matrix[j, i] = 1  # Symmetric matrix
-
-    # Create labels
-    labels = torch.arange(groupsAmount).repeat_interleave(node_per_group)
-
-    # Shuffle nodes and their labels
-    shuffle_indices = torch.randperm(nodeAmount, generator=rng)
-    shuffled_all_nodes = all_nodes[shuffle_indices]
-    shuffled_labels = labels[shuffle_indices]
-    shuffled_adj = adjacency_matrix[shuffle_indices][:, shuffle_indices]
-
-    return data, shuffled_adj, shuffled_all_nodes, shuffled_labels
 
 def makeDataSetCUDA(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=1, nodeNeighborStdDev=0.2, 
                 connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.34):

@@ -1,7 +1,7 @@
 import torch
 import warnings
 from model import GCN, ClusterPredictor
-from makeDataset import makeDataSetCUDA, plot_dataset, plot_embeddings
+from makeDataset import makeDataSetCUDA, plot_dataset
 import statistics
 from tqdm import tqdm
 import argparse

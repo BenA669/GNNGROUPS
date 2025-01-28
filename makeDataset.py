@@ -4,32 +4,32 @@ import matplotlib.pyplot as plt
 import torch
 import networkx as nx
 from tqdm import tqdm
+from sklearn.manifold import TSNE
+
+
+def plot_embeddings(features):
+    fig = plt.figure()
+    plt.scatter(features[:, 0], features[:, 1])
+    plt.show()
 
 # Convert tensors to numpy for plotting
-def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_labels=None):
+def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_labels=None, model_embeddings=None):
+
+    tsneEmbed = TSNE().fit_transform(model_embeddings.cpu())
+
     data = data.cpu().numpy()
     adjacency_matrix = adjacency_matrix.cpu().numpy()
     node_positions = node_positions.cpu().numpy()
     true_labels = true_labels.cpu().numpy()
+    print(true_labels)
     if predicted_labels is not None and type(predicted_labels) == torch.Tensor:
         predicted_labels = predicted_labels.cpu().numpy()
 
     num_groups = len(np.unique(true_labels))
 
-    # Create a NetworkX graph from the adjacency matrix
-    G = nx.Graph()
-    for i in range(len(node_positions)):
-        G.add_node(i, pos=node_positions[i])
-
-    for i in range(len(adjacency_matrix)):
-        for j in range(i + 1, len(adjacency_matrix)):
-            if adjacency_matrix[i, j] == 1:
-                G.add_edge(i, j)
-
-    pos = {i: node_positions[i] for i in range(len(node_positions))}
-    
     # Set up the plot
     fig = plt.figure(figsize=(10, 10)) 
+
     plt.title("Predicted Groups")
 
     # Plot nodes based on true labels
@@ -46,9 +46,6 @@ def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_
             incorrect_positions = node_positions[incorrect_nodes]
             plt.scatter(incorrect_positions[:, 0], incorrect_positions[:, 1], color='red', alpha=0.2, s=100, label='Incorrect Predictions')
 
-    # Plot the edges
-    # nx.draw_networkx_edges(G, pos, alpha=0.1, edge_color='gray')
-
 
     # Draw edges manually
     for i in range(len(adjacency_matrix)):
@@ -59,8 +56,9 @@ def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_
                     [node_positions[i, 0], node_positions[j, 0]],
                     [node_positions[i, 1], node_positions[j, 1]],
                     color='gray',
-                    alpha=0.3,
-                    linewidth=0.07
+                    alpha=0.5,
+                    # linewidth=0.07
+                    linewidth=0.1
                 )
 
     plt.axis("on")
@@ -68,13 +66,19 @@ def plot_dataset(data, adjacency_matrix, node_positions, true_labels, predicted_
     # plt.xticks(np.arange(min(node_positions[:, 0]), max(node_positions[:, 0]) + 1, step=1))
     # plt.yticks(np.arange(min(node_positions[:, 1]), max(node_positions[:, 1]) + 1, step=1))
 
-    plt.xticks([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
-    plt.yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
+    # plt.xticks([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
+    # plt.yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1])
 
     # Plot settings
     plt.xlabel("X")
     plt.ylabel("Y")
     plt.legend()
+
+    fig2 = plt.figure(figsize=(10, 10)) 
+    # for feature in tsneEmbed:
+
+    plt.scatter(tsneEmbed[:, 0], tsneEmbed[:, 1])
+
     plt.show()
 
 def makeDataSetOLD(groupsAmount=2, nodeAmount=100, nodeDim=2, nodeNeighborBaseProb=0.9, nodeNeighborStdDev=0.085, connectedThreshold=0.05, intra_group_prob=0.09, inter_group_prob=0.005, repulsion_factor=0.2):

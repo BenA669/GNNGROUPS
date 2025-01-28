@@ -1,7 +1,7 @@
 import torch
 import warnings
 from model import GCN, ClusterPredictor
-from makeDataset import makeDataSetCUDA, plot_dataset
+from makeDataset import makeDataSetCUDA, plot_dataset, plot_embeddings
 import statistics
 from tqdm import tqdm
 import argparse
@@ -234,10 +234,14 @@ if __name__ == '__main__':
         accTotal.append(accuracy)
 
         if args.c:
+            # print(tsne_features[:, 0])
+
+            # plot_embeddings(tsne_features)
+
             print("Predicted Labels:", predicted_labels)
             print("True Labels:", labels)
             print(f'Accuracy of the model: {accuracy:.2f}%')
-            plot_dataset(data, adj, all_nodes, labels, predicted_labels)
+            plot_dataset(data, adj, all_nodes, labels, predicted_labels, output)
     
     print(f'Accuracy of the model: {accuracy:.2f}%')
     print("Predicted Labels:", predicted_labels)
@@ -246,7 +250,7 @@ if __name__ == '__main__':
     print("Performance: {}".format(statistics.mean(accTotal)))
 
     # Plot results
-    plot_dataset(data, adj, all_nodes, labels, predicted_labels)
+    plot_dataset(data, adj, all_nodes, labels, predicted_labels, output)
     
 
     #70 ish

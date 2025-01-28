@@ -70,6 +70,7 @@ for epoch in tqdm(range(epochs)):
         output = model(all_nodes.float(), adj.float())
         
         # Calculate InfoNCE Loss
+        print(output)
         loss = InfoNCELoss(output, labels)
         batch_loss += loss
 

@@ -6,6 +6,7 @@ from tqdm import tqdm
 import numpy as np
 from model import TemporalGCN 
 from makeEpisode import getEgo
+from torch.nn.utils.rnn import pad_sequence
 
 
 class GCNDataset(Dataset):
@@ -33,96 +34,193 @@ def collate_fn(batch):
     return batch
 
 
+# class InfoNCELoss(nn.Module):
+#     def __init__(self, temperature=0.1):
+#         super().__init__()
+#         self.temperature = temperature
+#         self.ce = nn.CrossEntropyLoss()
+
+#     def forward(self, embeddings, groups):
+#         device = embeddings.device
+#         B, N, emb_dim = embeddings.shape
+
+#         # Flatten (B, N) -> (B*N)
+#         flat_emb = embeddings.view(B * N, emb_dim)        # [B*N, emb_dim]
+#         flat_groups = groups.view(B * N)                  # [B*N]
+
+#         # Build dict: group_id -> list of all indices with that group
+#         from collections import defaultdict
+#         group_dict = defaultdict(list)
+#         for idx in range(B * N):
+#             g = flat_groups[idx].item()
+#             group_dict[g].append(idx)
+
+#         anchor_idx_list = []
+#         pos_idx_list = []
+#         neg_idx_list = []
+
+#         # We'll create a global range of indices for quick complement sampling
+#         all_indices = torch.arange(B * N, device=device)
+
+#         for g, idxs in group_dict.items():
+#             idxs = torch.tensor(idxs, device=device)
+
+#             # We can't form a positive pair if there's < 2 members in this group
+#             if idxs.size(0) < 2:
+#                 continue
+
+#             # Random permutation of the indices in this group
+#             perm = idxs[torch.randperm(idxs.size(0))]
+
+#             # "Shift" the permutation by 1 to get a positive partner for each anchor
+#             # e.g. perm = [7, 10, 5], pos = [10, 5, 7]
+#             pos = torch.roll(perm, shifts=1, dims=0)
+
+#             anchor_idx_list.append(perm)
+#             pos_idx_list.append(pos)
+
+#             # Now sample negatives from the complement of this group
+#             complement_mask = (flat_groups != g)
+#             complement_indices = all_indices[complement_mask]
+#             if complement_indices.numel() == 0:
+#                 # If there's no complement (i.e., *all* nodes are in group g),
+#                 # we can't sample negatives for this group. Skip them.
+#                 continue
+
+#             # For each anchor in this group, choose 1 negative from the complement
+#             neg = complement_indices[
+#                 torch.randint(
+#                     high=complement_indices.size(0),
+#                     size=(idxs.size(0),),
+#                     device=device
+#                 )
+#             ]
+#             neg_idx_list.append(neg)
+
+#         if len(anchor_idx_list) == 0:
+#             # Edge case: no valid anchors => return zero or something safe
+#             return torch.tensor(0.0, device=device, requires_grad=True)
+
+#         # Concatenate all anchors, positives, negatives
+#         anchor_idx = torch.cat(anchor_idx_list, dim=0)  # [K]
+#         pos_idx    = torch.cat(pos_idx_list,    dim=0)  # [K]
+#         neg_idx    = torch.cat(neg_idx_list,    dim=0)  # [K]
+        
+#         # Gather embeddings
+#         anchor_emb = flat_emb[anchor_idx]   # [K, emb_dim]
+#         pos_emb    = flat_emb[pos_idx]      # [K, emb_dim]
+#         neg_emb    = flat_emb[neg_idx]      # [K, emb_dim]
+
+#         # Compute dot products for positives and negatives
+#         pos_score = torch.sum(anchor_emb * pos_emb, dim=1) / self.temperature  # [K]
+#         neg_score = torch.sum(anchor_emb * neg_emb, dim=1) / self.temperature  # [K]
+
+#         # Pack scores into logits: [pos_score, neg_score]
+#         logits = torch.stack([pos_score, neg_score], dim=1)  # [K, 2]
+
+#         # Labels are all zero (i.e., pos_score is the "correct" logit)
+#         labels = torch.zeros(logits.size(0), dtype=torch.long, device=device)
+
+#         # Compute 2-class cross-entropy
+#         loss = self.ce(logits, labels)
+#         return loss
+
 class InfoNCELoss(nn.Module):
     def __init__(self, temperature=0.1):
         super().__init__()
         self.temperature = temperature
         self.ce = nn.CrossEntropyLoss()
 
-    def forward(self, embeddings, groups):
-        device = embeddings.device
-        B, N, emb_dim = embeddings.shape
+    def forward(self, embeddings, groups, mask=None):
+        """
+        Accepts either:
+          - embeddings: a tensor of shape [B, N, emb_dim] and groups: a tensor of shape [B, N], or
+          - embeddings: a list of tensors, each of shape [num_nodes, emb_dim],
+            and groups: a list of tensors, each of shape [num_nodes].
+        The function concatenates the list case into flat tensors, so that negatives
+        can be sampled across all nodes in the batch.
+        """
+        # If embeddings are provided as a list, concatenate them along the node dimension.
+        if isinstance(embeddings, list):
+            # Each element in the list is assumed to be of shape [num_nodes, emb_dim]
+            flat_emb = torch.cat(embeddings, dim=0)  # [total_nodes, emb_dim]
+            flat_groups = torch.cat(groups, dim=0)     # [total_nodes]
+        else:
+            # Assume embeddings is a tensor of shape [B, N, emb_dim]
+            B, N, emb_dim = embeddings.shape
+            flat_emb = embeddings.view(B * N, emb_dim)
+            flat_groups = groups.view(B * N)
+        
+        device = flat_emb.device
+        total_nodes = flat_emb.shape[0]
 
-        # Flatten (B, N) -> (B*N)
-        flat_emb = embeddings.view(B * N, emb_dim)        # [B*N, emb_dim]
-        flat_groups = groups.view(B * N)                  # [B*N]
-
-        # Build dict: group_id -> list of all indices with that group
+        # Build a dictionary mapping group id to the list of indices with that group.
         from collections import defaultdict
         group_dict = defaultdict(list)
-        for idx in range(B * N):
+        for idx in range(total_nodes):
             g = flat_groups[idx].item()
             group_dict[g].append(idx)
 
         anchor_idx_list = []
         pos_idx_list = []
         neg_idx_list = []
-
-        # We'll create a global range of indices for quick complement sampling
-        all_indices = torch.arange(B * N, device=device)
+        # Create a global tensor of indices for negative sampling.
+        all_indices = torch.arange(total_nodes, device=device)
 
         for g, idxs in group_dict.items():
-            idxs = torch.tensor(idxs, device=device)
-
-            # We can't form a positive pair if there's < 2 members in this group
-            if idxs.size(0) < 2:
+            idxs_tensor = torch.tensor(idxs, device=device)
+            # Skip groups with fewer than 2 members.
+            if idxs_tensor.size(0) < 2:
                 continue
 
-            # Random permutation of the indices in this group
-            perm = idxs[torch.randperm(idxs.size(0))]
-
-            # "Shift" the permutation by 1 to get a positive partner for each anchor
-            # e.g. perm = [7, 10, 5], pos = [10, 5, 7]
+            # Shuffle the indices and pair each index with the next one (cyclically).
+            perm = idxs_tensor[torch.randperm(idxs_tensor.size(0))]
             pos = torch.roll(perm, shifts=1, dims=0)
 
             anchor_idx_list.append(perm)
             pos_idx_list.append(pos)
 
-            # Now sample negatives from the complement of this group
+            # Sample one negative for each anchor from outside the current group.
             complement_mask = (flat_groups != g)
             complement_indices = all_indices[complement_mask]
             if complement_indices.numel() == 0:
-                # If there's no complement (i.e., *all* nodes are in group g),
-                # we can't sample negatives for this group. Skip them.
                 continue
 
-            # For each anchor in this group, choose 1 negative from the complement
             neg = complement_indices[
                 torch.randint(
                     high=complement_indices.size(0),
-                    size=(idxs.size(0),),
+                    size=(idxs_tensor.size(0),),
                     device=device
                 )
             ]
             neg_idx_list.append(neg)
 
+        # Handle the edge-case where no valid positive pairs are found.
         if len(anchor_idx_list) == 0:
-            # Edge case: no valid anchors => return zero or something safe
             return torch.tensor(0.0, device=device, requires_grad=True)
 
-        # Concatenate all anchors, positives, negatives
-        anchor_idx = torch.cat(anchor_idx_list, dim=0)  # [K]
-        pos_idx    = torch.cat(pos_idx_list,    dim=0)  # [K]
-        neg_idx    = torch.cat(neg_idx_list,    dim=0)  # [K]
+        # Concatenate all anchor, positive, and negative indices.
+        anchor_idx = torch.cat(anchor_idx_list, dim=0)
+        pos_idx    = torch.cat(pos_idx_list,    dim=0)
+        neg_idx    = torch.cat(neg_idx_list,    dim=0)
         
-        # Gather embeddings
+        # Gather the embeddings.
         anchor_emb = flat_emb[anchor_idx]   # [K, emb_dim]
         pos_emb    = flat_emb[pos_idx]      # [K, emb_dim]
         neg_emb    = flat_emb[neg_idx]      # [K, emb_dim]
 
-        # Compute dot products for positives and negatives
+        # Compute dot products for positives and negatives, scaled by temperature.
         pos_score = torch.sum(anchor_emb * pos_emb, dim=1) / self.temperature  # [K]
         neg_score = torch.sum(anchor_emb * neg_emb, dim=1) / self.temperature  # [K]
 
-        # Pack scores into logits: [pos_score, neg_score]
+        # Create logits and labels.
         logits = torch.stack([pos_score, neg_score], dim=1)  # [K, 2]
-
-        # Labels are all zero (i.e., pos_score is the "correct" logit)
         labels = torch.zeros(logits.size(0), dtype=torch.long, device=device)
 
-        # Compute 2-class cross-entropy
+        # Compute and return the cross-entropy loss.
         loss = self.ce(logits, labels)
         return loss
+
 
 
 def train_one_epoch(model, dataloader, optimizer, device, infonce_loss_fn):
@@ -173,11 +271,21 @@ def train_one_epoch(model, dataloader, optimizer, device, infonce_loss_fn):
         
         # Now we have a "batch" of embeddings: len(sample_list) items
         # We can stack them into [batch_size, num_nodes, output_dim]
-        batch_embeddings = torch.stack(batch_embeddings, dim=0)  # [B, node_amt, output_dim]
-        batch_groups = torch.stack(batch_groups, dim=0)  # [B, node_amt]
+
+        # padded_embeddings = pad_sequence(batch_embeddings, batch_first=True)  # [B, max_num_nodes, output_dim]
+        # # For groups, choose an appropriate padding value (e.g., -1 if that is not a valid group)
+        # padded_groups = pad_sequence(batch_groups, batch_first=True, padding_value=-1)
+
+        # mask = padded_groups != -1
+
+        # print(str(padded_groups))
+
+        # batch_embeddings = torch.stack(batch_embeddings, dim=0)  # [B, node_amt, output_dim]
+        # batch_groups = torch.stack(batch_groups, dim=0)  # [B, node_amt]
         
         # Compute InfoNCE loss
         loss = infonce_loss_fn(batch_embeddings, batch_groups)
+        # loss = infonce_loss_fn(padded_embeddings, padded_groups, mask)
         
         # Backprop
         optimizer.zero_grad()
@@ -199,23 +307,31 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
         batch_groups = []
 
         for (positions, adjacency) in sample_list:
-            time_steps, node_amt, _ = positions.shape
-            group_ids = positions[0, :, 2].long()
-            positions_transposed = positions.permute(1, 0, 2).unsqueeze(0).to(device)
+            # time_steps, node_amt, _ = positions.shape
+            # group_ids = positions[0, :, 2].long()
+            # positions_transposed = positions.permute(1, 0, 2).unsqueeze(0).to(device)
             
+            ego_idx, ego_positions, ego_adjacency = getEgo(positions, adjacency)
+            group_ids = ego_positions[0, :, 2].long()
+            time_steps, node_amt, _ = ego_positions.shape
+
+            ego_positions_no_id = ego_positions[:, :, :2]
+            positions_transposed = ego_positions_no_id.permute(1, 0, 2) # shape: [node_amt, time_steps, 3]
+            x = positions_transposed.unsqueeze(0).to(device)
+
             # Convert adjacency to list of edge_indices
             edge_indices = []
             for t in range(time_steps):
-                adj_t = adjacency[t]
+                adj_t = ego_adjacency[t]
                 edge_index_t = adjacency_to_edge_index(adj_t).to(device)
                 edge_indices.append(edge_index_t)
             
-            emb = model(positions_transposed, edge_indices)
+            emb = model(x, edge_indices)
             batch_embeddings.append(emb.squeeze(0))
             batch_groups.append(group_ids.to(device))
         
-        batch_embeddings = torch.stack(batch_embeddings, dim=0)
-        batch_groups = torch.stack(batch_groups, dim=0)
+        # batch_embeddings = torch.stack(batch_embeddings, dim=0)
+        # batch_groups = torch.stack(batch_groups, dim=0)
         loss = infonce_loss_fn(batch_embeddings, batch_groups)
         epoch_loss += loss.item()
     
@@ -263,7 +379,7 @@ def main():
     # hidden_dim is adjustable
     model = TemporalGCN(
         input_dim=feat_dim - 1,
-        output_dim=32,  # this is your embedding dim
+        output_dim=16,  # this is your embedding dim
         num_nodes=node_amt,
         num_timesteps=time_steps,
         hidden_dim=args.hidden_dim

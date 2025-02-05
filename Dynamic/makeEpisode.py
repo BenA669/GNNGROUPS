@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from noise import pnoise2  # pip install noise
 from animate import plot_faster  # assumed available for visualization
+import time as time
 
 
 def get_perlin_gradient(x, y, offset, noise_scale, eps, octaves, persistence, lacunarity):
@@ -34,6 +35,7 @@ def get_perlin_gradient(x, y, offset, noise_scale, eps, octaves, persistence, la
                  persistence=persistence,
                  lacunarity=lacunarity)
     dy = (n3 - n4) / (2 * eps)
+    
     return dx, dy
 
 
@@ -193,7 +195,7 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
 
     # Choose a random ego node index.
     ego_idx = random.randint(0, total_nodes - 1)
-    print(f"Chosen ego node index: {ego_idx}")
+    # print(f"Chosen ego node index: {ego_idx}")
 
     # Determine the ego's neighbors:
     # For each time step, check which nodes are connected to the ego node.
@@ -206,7 +208,7 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
 
     # Get the indices of the ego node and its neighbors.
     neighbor_indices = torch.nonzero(union_neighbors, as_tuple=False).flatten()
-    print(f"Ego network contains {len(neighbor_indices)} nodes: {neighbor_indices.tolist()}")
+    # print(f"Ego network contains {len(neighbor_indices)} nodes: {neighbor_indices.tolist()}")
 
     # Filter the positions tensor to include only the selected nodes.
     ego_positions = all_positions_cpu[:, neighbor_indices, :]
@@ -219,6 +221,8 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
 
 
 if __name__ == '__main__':
+    
+
     time_steps = 20
     group_amt = 4
     node_amt = 400
@@ -249,4 +253,6 @@ if __name__ == '__main__':
 
     ego_index, ego_positions, ego_adjacency = getEgo(all_positions_cpu, adjacency_dynamic_cpu)
 
+    print("GUH")
+    
     plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_network_indices=ego_positions)

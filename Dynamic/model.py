@@ -28,6 +28,7 @@ class TemporalGCN(nn.Module):
             Output predictions for each node
         """
         batch_size = x.size(0)
+        num_nodes_Dyn = x.size(1)
         
         # Reshape for processing: [batch_size * num_nodes, num_timesteps, input_dim]
         x = x.view(-1, self.num_timesteps, x.size(-1))
@@ -53,7 +54,7 @@ class TemporalGCN(nn.Module):
         x_out = h_n[-1]
         
         # Reshape back to [batch_size, num_nodes, hidden_dim]
-        x_out = x_out.view(batch_size, self.num_nodes, -1)
+        x_out = x_out.view(batch_size, num_nodes_Dyn, -1)
         
         # Final output layer
         x_out = self.fc(x_out)  # [batch_size, num_nodes, output_dim]

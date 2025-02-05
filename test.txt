@@ -26,3 +26,10 @@ Dynamic groups
 
 Modify problem where target node only has infomation on neighbor nodes , timestamp on how far you collect infomation
 Nodes may move in and out of adj range
+
+
+capture mvoing traj of each node
+
+training data for fast and slow node
+node centric - anchor node, given node degree, more features, only know anchor node and some neighbor node information
+cross emtropy clustering

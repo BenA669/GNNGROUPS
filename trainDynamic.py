@@ -1,6 +1,6 @@
 from model import GCN, ClusterPredictor
 from evaluate import eval, InfoNCELoss
-from dynamicDataset import makeDatasetDynamic 
+from Dynamic.makeEpisode import makeDatasetDynamic 
 import torch
 import torch.optim as optim
 import torch.nn.functional as F

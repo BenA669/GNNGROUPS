@@ -2,119 +2,220 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from noise import pnoise2  # pip install noise
+from animate import plot_faster  # assumed available for visualization
 
 
-def makeDatasetDynamic(
-        node_amt=400,
-        group_amt=4,
-        std_dev=1,
+def get_perlin_gradient(x, y, offset, noise_scale, eps, octaves, persistence, lacunarity):
+    """
+    Compute the gradient of a Perlin noise function at (x,y) with a given offset,
+    using central finite differences.
+    """
+    n1 = pnoise2((x + eps + offset[0]) * noise_scale,
+                 (y + offset[1]) * noise_scale,
+                 octaves=octaves,
+                 persistence=persistence,
+                 lacunarity=lacunarity)
+    n2 = pnoise2((x - eps + offset[0]) * noise_scale,
+                 (y + offset[1]) * noise_scale,
+                 octaves=octaves,
+                 persistence=persistence,
+                 lacunarity=lacunarity)
+    dx = (n1 - n2) / (2 * eps)
 
-        speed_min=0.01,
-        speed_max=0.5,
-        time_steps=20,
+    n3 = pnoise2((x + offset[0]) * noise_scale,
+                 (y + eps + offset[1]) * noise_scale,
+                 octaves=octaves,
+                 persistence=persistence,
+                 lacunarity=lacunarity)
+    n4 = pnoise2((x + offset[0]) * noise_scale,
+                 (y - eps + offset[1]) * noise_scale,
+                 octaves=octaves,
+                 persistence=persistence,
+                 lacunarity=lacunarity)
+    dy = (n3 - n4) / (2 * eps)
+    return dx, dy
 
-        intra_prob=0.05,
-        inter_prob=0.001,
 
-        distance_threshold=0.5  # distance under which nodes get connected
-    ):
-
+def makeDatasetDynamicPerlin(
+    node_amt=400,
+    group_amt=4,
+    std_dev=1,
+    time_steps=20,
+    distance_threshold=2,
+    intra_prob=0.05,
+    inter_prob=0.001,
+    noise_scale=1.0,      # scales the noise coordinate (affects frequency)
+    noise_strength=0.1,   # multiplier for the noise gradient (step size)
+    tilt_strength=0.05,   # added constant bias (tilt) for each group
+    octaves=1,
+    persistence=0.5,
+    lacunarity=2.0
+):
+    """
+    Generates a dynamic dataset where nodes belong to groups.
+    Each group is associated with its own Perlin noise field, a constant tilt, and a
+    speed multiplier (50% chance to move at 0.5x speed, 50% chance to move at normal speed).
+    Nodes update their positions by following a combination of the noise gradient,
+    the group’s constant directional bias, and the group’s speed.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     rng = torch.Generator(device=device)
     rng.manual_seed(torch.initial_seed())
 
-    # ---- 1) Assign each node to a group. ----
+    # --- 1. Assign nodes to groups and set initial positions ---
     rand_vals = torch.rand(node_amt, generator=rng, device=device)
     group_edges = torch.arange(1, group_amt + 1, device=device) * (1.0 / group_amt)
     groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
 
-    # ---- 2) Generate initial positions for each group. ----
+    # Use a random “seed” (group center) for each group.
     last_seen_seeds = torch.rand((group_amt, 2), device=device)  # shape: (group_amt, 2)
     nodes = torch.zeros((node_amt, 3), device=device)             # shape: (node_amt, 3)
-    nodes[:, 2] = groups
+    nodes[:, 2] = groups  # store group id in third column
 
     for i in range(node_amt):
         g = int(groups[i].item())
+        # Create an initial position by sampling from a normal distribution centered at the group's current seed.
         point = torch.normal(mean=last_seen_seeds[g], std=std_dev, generator=rng)
-        # Shift the group's "seed" to get a random walk for where the group center might go
-        last_seen_seeds[g] = point
+        last_seen_seeds[g] = point  # update the group's seed if desired
         nodes[i, 0] = point[0]
         nodes[i, 1] = point[1]
 
-    # ---- 3) Assign velocities to each group. ----
-    group_velocities = torch.zeros((group_amt, 2), device=device)
-    for g in range(group_amt):
-        dir_vec = torch.randn(2, generator=rng, device=device)
-        dir_vec = dir_vec / torch.norm(dir_vec)  # random unit direction
-        speed = torch.rand(1, generator=rng, device=device) * (speed_max - speed_min) + speed_min
-        group_velocities[g] = speed * dir_vec
-
-    # ---- 4) Compute all positions for each time-step. ----
     all_positions = torch.zeros((time_steps, node_amt, 3), device=device)
     all_positions[0] = nodes
 
+    # --- 2. Set up Perlin noise parameters, group tilts, and group speeds ---
+    # Each group gets its own noise offset so that its noise field is different.
+    # In addition, each group is assigned a constant "tilt" direction.
+    # Also, assign each group a speed multiplier: 0.5 with 50% chance, or 1.0 with 50% chance.
+    group_noise_offsets = []
+    group_tilts = []
+    group_speeds = []  # New: store speed multipliers per group.
+    for g in range(group_amt):
+        offset_x = random.uniform(0, 100)
+        offset_y = random.uniform(0, 100)
+        group_noise_offsets.append((offset_x, offset_y))
+        # Create a random tilt vector (unit vector) for the group.
+        angle = random.uniform(0, 2 * np.pi)
+        tilt_vector = (np.cos(angle), np.sin(angle))
+        group_tilts.append(tilt_vector)
+        # Randomly assign the speed multiplier: 50% chance for 0.5 (half-speed) or 1.0 (normal speed)
+        speed = 0.3 if random.random() < 0.5 else 1.0
+        group_speeds.append(speed)
+
+    eps = 1e-3  # small epsilon for finite difference gradient approximation
+
+    # --- 3. Update node positions over time based on noise gradient, tilt, and group speed ---
     for t in range(1, time_steps):
-        prev_positions = all_positions[t - 1]
+        prev_positions = all_positions[t - 1].clone()
         new_positions = prev_positions.clone()
+        for i in range(node_amt):
+            # Get current x, y and the group id of this node.
+            x = prev_positions[i, 0].item()
+            y = prev_positions[i, 1].item()
+            group = int(prev_positions[i, 2].item())
+            offset = group_noise_offsets[group]
+            tilt_vector = group_tilts[group]
+            speed_multiplier = group_speeds[group]
 
-        node_groups = prev_positions[:, 2].long()        # shape: (node_amt,)
-        node_velocities = group_velocities[node_groups]  # shape: (node_amt, 2)
-        new_positions[:, :2] += node_velocities
+            # Compute the gradient of the noise field at (x, y)
+            grad_x, grad_y = get_perlin_gradient(
+                x, y, offset, noise_scale, eps, octaves, persistence, lacunarity
+            )
 
+            # Combine noise gradient with the constant tilt.
+            step_x = noise_strength * grad_x + tilt_strength * tilt_vector[0]
+            step_y = noise_strength * grad_y + tilt_strength * tilt_vector[1]
+
+            # Multiply the step by the group's speed multiplier.
+            step_x *= speed_multiplier
+            step_y *= speed_multiplier
+
+            new_positions[i, 0] = prev_positions[i, 0] + step_x
+            new_positions[i, 1] = prev_positions[i, 1] + step_y
+            # The group id (stored in column 2) remains unchanged.
         all_positions[t] = new_positions
 
-    # ---- 5) Create the *static* adjacency due to random inter/intra-group probabilities. ----
-    #         This adjacency does NOT change over time.
+    # --- 4. Create a static (probabilistic) adjacency matrix ---
     node_groups = nodes[:, 2].long()  # shape: (node_amt,)
     same_group_mask = node_groups.unsqueeze(0).eq(node_groups.unsqueeze(1))  # (node_amt, node_amt)
-
-    # Create a matrix of probabilities
     p_mat = torch.full((node_amt, node_amt), inter_prob, device=device)
-    p_mat[same_group_mask] = intra_prob  # fill in same-group entries
+    p_mat[same_group_mask] = intra_prob  # higher connection probability for same-group pairs
 
-    # Sample from uniform(0,1) in an NxN matrix
     rand_mat = torch.rand((node_amt, node_amt), device=device, generator=rng)
-
-    # Build adjacency by thresholding
     static_adj_matrix = (rand_mat < p_mat).to(torch.int8)
-
-    # Make adjacency symmetric and remove diagonal
+    # Make adjacency symmetric and remove self-connections.
     static_adj_matrix = torch.triu(static_adj_matrix, diagonal=1)
-    static_adj_matrix = static_adj_matrix + static_adj_matrix.T  # symmetrize
-    # diagonal is automatically 0 from triu(..., diagonal=1)
+    static_adj_matrix = static_adj_matrix + static_adj_matrix.T
 
-    # ---- 6) For each time-step, compute a distance-based adjacency, then union it with the static one. ----
-    # adjacency_dynamic will be shape: (time_steps, node_amt, node_amt)
+    # --- 5. For each time step, add dynamic (distance–based) connections ---
     adjacency_dynamic = []
     for t in range(time_steps):
         positions_t = all_positions[t, :, :2]  # shape: (node_amt, 2)
-
-        # Compute pairwise distances
-        # (You can do this more efficiently with broadcasting or cdist, but we'll do it explicitly here.)
+        # Compute pairwise distances.
         dist_mat = torch.cdist(positions_t.unsqueeze(0), positions_t.unsqueeze(0)).squeeze(0)
-        # dist_mat is shape (node_amt, node_amt)
-
-        # Build adjacency by threshold
+        # Build dynamic adjacency from distance threshold.
         dist_adj = (dist_mat < distance_threshold).to(torch.int8)
-        # Remove diagonal
         dist_adj.fill_diagonal_(0)
-        # Make sure it's symmetric (though cdist should already yield a symmetric matrix)
-        # We'll just force-symmetrize it in case of numerical issues:
         dist_adj = torch.triu(dist_adj, diagonal=1) + torch.triu(dist_adj, diagonal=1).T
-
-        # Combine with static adjacency
+        # Combine static and dynamic connections (logical OR).
         union_adj = (static_adj_matrix | dist_adj).to(torch.int8)
-
         adjacency_dynamic.append(union_adj)
 
-    # Convert list -> tensor: (time_steps, node_amt, node_amt)
     adjacency_dynamic = torch.stack(adjacency_dynamic, dim=0)
 
-    # Move to CPU for convenience
+    # Move to CPU for convenience.
     all_positions_cpu = all_positions.cpu()
     adjacency_dynamic_cpu = adjacency_dynamic.cpu()
 
     return all_positions_cpu, adjacency_dynamic_cpu
+
+def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
+    """
+    Select a random ego node and extract its ego network from the dynamic dataset.
+    
+    The ego network consists of the chosen node and all nodes that have been connected
+    to it (in any time step) according to the dynamic adjacency matrices.
+    
+    Parameters:
+        all_positions_cpu (torch.Tensor): Tensor of shape (time_steps, node_amt, 3)
+            containing the positions (and group id in column 2) for each node at each time step.
+        adjacency_dynamic_cpu (torch.Tensor): Tensor of shape (time_steps, node_amt, node_amt)
+            containing the dynamic (time-varying) adjacency matrices.
+    
+    Returns:
+        ego_positions (torch.Tensor): Filtered positions tensor containing only the ego and its neighbors,
+            of shape (time_steps, n_ego_nodes, 3).
+        ego_adjacency (torch.Tensor): Filtered dynamic adjacency tensor of shape (time_steps, n_ego_nodes, n_ego_nodes).
+    """
+    # Get the total number of nodes and time steps.
+    time_steps, total_nodes, _ = all_positions_cpu.shape
+
+    # Choose a random ego node index.
+    ego_idx = random.randint(0, total_nodes - 1)
+    print(f"Chosen ego node index: {ego_idx}")
+
+    # Determine the ego's neighbors:
+    # For each time step, check which nodes are connected to the ego node.
+    # Then take the union (logical OR) over all time steps.
+    # Note: Since the dynamic adjacency matrices are symmetric, you can use either
+    # the row or the column corresponding to the ego.
+    union_neighbors = (adjacency_dynamic_cpu[:, ego_idx, :] > 0).any(dim=0)
+    # Always include the ego node itself.
+    union_neighbors[ego_idx] = True
+
+    # Get the indices of the ego node and its neighbors.
+    neighbor_indices = torch.nonzero(union_neighbors, as_tuple=False).flatten()
+    print(f"Ego network contains {len(neighbor_indices)} nodes: {neighbor_indices.tolist()}")
+
+    # Filter the positions tensor to include only the selected nodes.
+    ego_positions = all_positions_cpu[:, neighbor_indices, :]
+
+    # For the dynamic adjacency, extract the submatrix (for each time step)
+    # corresponding to the chosen nodes.
+    ego_adjacency = adjacency_dynamic_cpu[:, neighbor_indices][:, :, neighbor_indices]
+
+    return ego_idx, ego_positions, ego_adjacency
 
 
 if __name__ == '__main__':
@@ -122,49 +223,30 @@ if __name__ == '__main__':
     group_amt = 4
     node_amt = 400
 
-    all_positions_cpu, adjacency_dynamic_cpu = makeDatasetDynamic(
+    # Adjust these parameters as desired.
+    noise_scale = 0.05      # frequency of the noise
+    noise_strength = 2      # influence of the noise gradient
+    tilt_strength = 0.25     # constant bias per group
+
+    all_positions_cpu, adjacency_dynamic_cpu = makeDatasetDynamicPerlin(
         node_amt=node_amt,
         group_amt=group_amt,
+        std_dev=1,
         time_steps=time_steps,
-        distance_threshold=2,  # Adjust as needed
+        distance_threshold=2,
         intra_prob=0.05,
-        inter_prob=0.001
+        inter_prob=0.001,
+        noise_scale=noise_scale,
+        noise_strength=noise_strength,
+        tilt_strength=tilt_strength,
+        octaves=1,
+        persistence=0.5,
+        lacunarity=2.0
     )
 
-    # --- Visualization ---
-    colors = ["blue", "orange", "green", "red", "purple", "brown"]  # extend as needed
+    # Visualize the evolving graph using the animate module.
+    # plot_faster(all_positions_cpu, adjacency_dynamic_cpu)
 
-    plt.figure()
-    for t in range(time_steps):
-        plt.clf()  # Clear the current figure for the new time-step
+    ego_index, ego_positions, ego_adjacency = getEgo(all_positions_cpu, adjacency_dynamic_cpu)
 
-        # Plot edges first
-        adj_t = adjacency_dynamic_cpu[t]  # shape: (node_amt, node_amt)
-        for i in range(node_amt):
-            # only need to iterate j in (i+1 .. node_amt) to avoid double-plotting
-            for j in range(i + 1, node_amt):
-                if adj_t[i, j] == 1:
-                    x_vals = [all_positions_cpu[t, i, 0].item(), all_positions_cpu[t, j, 0].item()]
-                    y_vals = [all_positions_cpu[t, i, 1].item(), all_positions_cpu[t, j, 1].item()]
-                    plt.plot(x_vals, y_vals, c="gray", alpha=0.3, linewidth=0.5)
-
-        # Plot the nodes in scatter form, color-coded by their group
-        group_ids = all_positions_cpu[t, :, 2].long()
-        unique_groups = torch.unique(group_ids)
-        for g in unique_groups:
-            mask = (group_ids == g)
-            plt.scatter(
-                all_positions_cpu[t, mask, 0],
-                all_positions_cpu[t, mask, 1],
-                c=colors[g % len(colors)],
-                label=f"Group {g}",
-                alpha=0.7,
-            )
-
-        plt.title(f"Time Step {t}")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.legend()
-        plt.pause(0.01)  # pause briefly so plots update
-
-    plt.show()
+    plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_network_indices=ego_positions)

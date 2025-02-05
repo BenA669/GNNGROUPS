@@ -2,18 +2,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-
+from tqdm import tqdm
 import numpy as np
-from model import TemporalGCN  # Your model from model.py
+from model import TemporalGCN 
 
 
 class GCNDataset(Dataset):
-    """
-    A Dataset class that loads the data saved in *.pt files (list of (positions, adjacency)).
-    Each item:
-        positions: (time_steps, node_amt, 3)  -- [x, y, group_id]
-        adjacency: (time_steps, node_amt, node_amt)
-    """
     def __init__(self, data_path):
         super().__init__()
         self.data = torch.load(data_path)  # list of (positions, adjacency)
@@ -29,114 +23,105 @@ class GCNDataset(Dataset):
 
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
-    """
-    Converts a single adjacency matrix (node_amt x node_amt) into
-    an edge_index of shape [2, num_edges].
-    Here, adj_t is assumed to be 0/1 and symmetric.
-    
-    We only take upper-triangular or just the non-zero entries
-    to avoid duplicating edges. GCNConv can handle duplicates,
-    but it's neater to remove them.
-    """
     # (node_i, node_j) for all 1-entries
     edge_index = adj_t.nonzero().t().contiguous()  # shape [2, E]
     return edge_index
 
 
 def collate_fn(batch):
-    """
-    Collates a list of (positions, adjacency) into a single batch.
-    batch: list of tuples where each tuple is (positions, adjacency).
-
-    We'll produce:
-        - x_batch of shape [batch_size, num_nodes, num_timesteps, input_dim]
-        - edge_indices_list: a list (of length num_timesteps) of edge_index
-          for the entire batch. BUT typically, you can't just merge adjacency
-          across different examples if you want them in one big graph. 
-
-    For demonstration, we show a simpler approach: process each sample
-    in the batch *separately*, which is a bit unusual for a GCN, but 
-    simpler to illustrate. We'll just return them as a list-of-samples 
-    and handle them one by one in the training loop. 
-    """
-    return batch  # We'll handle them in the training step manually.
+    return batch
 
 
 class InfoNCELoss(nn.Module):
-    """
-    A simple InfoNCE-like loss for node embeddings:
-      - anchor: node i
-      - positive: a node j from the same group
-      - negatives: all nodes k from different groups
-
-    For each anchor i, we pick exactly one positive j from the same group (randomly)
-    and treat the rest as negatives. 
-    """
     def __init__(self, temperature=0.1):
         super().__init__()
         self.temperature = temperature
-        self.softmax = nn.Softmax(dim=-1)
         self.ce = nn.CrossEntropyLoss()
-    
-    def forward(self, embeddings, groups):
-        """
-        Args:
-            embeddings: [batch_size, num_nodes, embed_dim]
-            groups: [batch_size, num_nodes]  (group indices for each node)
 
-        Returns:
-            scalar loss (tensor)
-        """
-        # We'll do this for each sample in the batch separately and then average.
-        batch_size, num_nodes, embed_dim = embeddings.shape
+    def forward(self, embeddings, groups):
         device = embeddings.device
+        B, N, emb_dim = embeddings.shape
+
+        # Flatten (B, N) -> (B*N)
+        flat_emb = embeddings.view(B * N, emb_dim)        # [B*N, emb_dim]
+        flat_groups = groups.view(B * N)                  # [B*N]
+
+        # Build dict: group_id -> list of all indices with that group
+        from collections import defaultdict
+        group_dict = defaultdict(list)
+        for idx in range(B * N):
+            g = flat_groups[idx].item()
+            group_dict[g].append(idx)
+
+        anchor_idx_list = []
+        pos_idx_list = []
+        neg_idx_list = []
+
+        # We'll create a global range of indices for quick complement sampling
+        all_indices = torch.arange(B * N, device=device)
+
+        for g, idxs in group_dict.items():
+            idxs = torch.tensor(idxs, device=device)
+
+            # We can't form a positive pair if there's < 2 members in this group
+            if idxs.size(0) < 2:
+                continue
+
+            # Random permutation of the indices in this group
+            perm = idxs[torch.randperm(idxs.size(0))]
+
+            # "Shift" the permutation by 1 to get a positive partner for each anchor
+            # e.g. perm = [7, 10, 5], pos = [10, 5, 7]
+            pos = torch.roll(perm, shifts=1, dims=0)
+
+            anchor_idx_list.append(perm)
+            pos_idx_list.append(pos)
+
+            # Now sample negatives from the complement of this group
+            complement_mask = (flat_groups != g)
+            complement_indices = all_indices[complement_mask]
+            if complement_indices.numel() == 0:
+                # If there's no complement (i.e., *all* nodes are in group g),
+                # we can't sample negatives for this group. Skip them.
+                continue
+
+            # For each anchor in this group, choose 1 negative from the complement
+            neg = complement_indices[
+                torch.randint(
+                    high=complement_indices.size(0),
+                    size=(idxs.size(0),),
+                    device=device
+                )
+            ]
+            neg_idx_list.append(neg)
+
+        if len(anchor_idx_list) == 0:
+            # Edge case: no valid anchors => return zero or something safe
+            return torch.tensor(0.0, device=device, requires_grad=True)
+
+        # Concatenate all anchors, positives, negatives
+        anchor_idx = torch.cat(anchor_idx_list, dim=0)  # [K]
+        pos_idx    = torch.cat(pos_idx_list,    dim=0)  # [K]
+        neg_idx    = torch.cat(neg_idx_list,    dim=0)  # [K]
         
-        total_loss = 0.0
-        for b in range(batch_size):
-            emb_b = embeddings[b]   # shape: [num_nodes, embed_dim]
-            grp_b = groups[b]       # shape: [num_nodes]
-            
-            # For each node i, we pick one positive j from the same group (if possible).
-            loss_b = 0.0
-            count_b = 0
-            
-            for i in range(num_nodes):
-                group_i = grp_b[i].item()
-                same_group_idxs = (grp_b == group_i).nonzero(as_tuple=True)[0]
-                # Exclude i itself
-                same_group_idxs = same_group_idxs[same_group_idxs != i]
-                
-                if len(same_group_idxs) < 1:
-                    # No positive available; skip
-                    continue
-                
-                # Pick exactly one positive at random:
-                j = same_group_idxs[torch.randint(len(same_group_idxs), (1,))]
-                
-                # Anchor and positive embeddings
-                anchor = emb_b[i].unsqueeze(0)       # [1, embed_dim]
-                positive = emb_b[j].unsqueeze(0)     # [1, embed_dim]
-                
-                # Compute similarity with all nodes to anchor
-                sim_all = torch.mm(anchor, emb_b.t()) / self.temperature
-                # shape: [1, num_nodes] (dot product with every node)
-                
-                # We'll classify the "positive index" among these num_nodes as the correct class
-                # The cross-entropy label is the index of j.
-                label = j  # j is already a single-element tensor (the index)
-                
-                # Reshape sim_all and label to fit CrossEntropyLoss expectation:
-                # CE expects shape [batch_size, n_classes], label [batch_size]
-                # Here we have "batch_size=1" and "n_classes=num_nodes".
-                loss_i = self.ce(sim_all, label)
-                loss_b += loss_i
-                count_b += 1
-            
-            if count_b > 0:
-                loss_b /= count_b
-            total_loss += loss_b
-        
-        return total_loss / batch_size
+        # Gather embeddings
+        anchor_emb = flat_emb[anchor_idx]   # [K, emb_dim]
+        pos_emb    = flat_emb[pos_idx]      # [K, emb_dim]
+        neg_emb    = flat_emb[neg_idx]      # [K, emb_dim]
+
+        # Compute dot products for positives and negatives
+        pos_score = torch.sum(anchor_emb * pos_emb, dim=1) / self.temperature  # [K]
+        neg_score = torch.sum(anchor_emb * neg_emb, dim=1) / self.temperature  # [K]
+
+        # Pack scores into logits: [pos_score, neg_score]
+        logits = torch.stack([pos_score, neg_score], dim=1)  # [K, 2]
+
+        # Labels are all zero (i.e., pos_score is the "correct" logit)
+        labels = torch.zeros(logits.size(0), dtype=torch.long, device=device)
+
+        # Compute 2-class cross-entropy
+        loss = self.ce(logits, labels)
+        return loss
 
 
 def train_one_epoch(model, dataloader, optimizer, device, infonce_loss_fn):
@@ -147,9 +132,6 @@ def train_one_epoch(model, dataloader, optimizer, device, infonce_loss_fn):
         # sample_list is a list of (positions, adjacency), 
         # one for each item in the batch. We'll accumulate the loss.
         # Then backprop once per batch.
-
-        # If you want to handle each sample in the batch in a single big graph,
-        # you'd have to combine them carefully. For simplicity, we do a loop:
         
         batch_embeddings = []
         batch_groups = []
@@ -160,8 +142,7 @@ def train_one_epoch(model, dataloader, optimizer, device, infonce_loss_fn):
             
             time_steps, node_amt, _ = positions.shape
             
-            # The group ID is in positions[..., 2], which is the same for all timesteps.
-            # We'll just use positions[0, :, 2] as the group assignments for each node.
+            
             group_ids = positions[0, :, 2].long()
             
             # Build the feature tensor x of shape [1, node_amt, time_steps, input_dim=2 or 3?]
@@ -296,7 +277,7 @@ def main():
     # --- Training Loop ---
     best_val_loss = float('inf')
     
-    for epoch in range(1, args.epochs+1):
+    for epoch in tqdm(range(1, args.epochs+1)):
         train_loss = train_one_epoch(model, train_loader, optimizer, device, infonce_loss_fn)
         val_loss = validate_one_epoch(model, val_loader, device, infonce_loss_fn)
         

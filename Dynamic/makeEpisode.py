@@ -2,10 +2,15 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from noise import pnoise2  # pip install noise
-from animate import plot_faster  # assumed available for visualization
+from noise import pnoise2
+from animate import plot_faster
 import time as time
 
+
+def adjacency_to_edge_index(adj_t: torch.Tensor):
+    # (node_i, node_j) for all 1-entries
+    edge_index = adj_t.nonzero().t().contiguous()  # shape [2, E]
+    return edge_index
 
 def get_perlin_gradient(x, y, offset, noise_scale, eps, octaves, persistence, lacunarity):
     """
@@ -54,13 +59,6 @@ def makeDatasetDynamicPerlin(
     persistence=0.5,
     lacunarity=2.0
 ):
-    """
-    Generates a dynamic dataset where nodes belong to groups.
-    Each group is associated with its own Perlin noise field, a constant tilt, and a
-    speed multiplier (50% chance to move at 0.5x speed, 50% chance to move at normal speed).
-    Nodes update their positions by following a combination of the noise gradient,
-    the group’s constant directional bias, and the group’s speed.
-    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     rng = torch.Generator(device=device)
     rng.manual_seed(torch.initial_seed())
@@ -79,7 +77,7 @@ def makeDatasetDynamicPerlin(
         g = int(groups[i].item())
         # Create an initial position by sampling from a normal distribution centered at the group's current seed.
         point = torch.normal(mean=last_seen_seeds[g], std=std_dev, generator=rng)
-        last_seen_seeds[g] = point  # update the group's seed if desired
+        last_seen_seeds[g] = point  # update the group's seed
         nodes[i, 0] = point[0]
         nodes[i, 1] = point[1]
 
@@ -101,7 +99,6 @@ def makeDatasetDynamicPerlin(
         angle = random.uniform(0, 2 * np.pi)
         tilt_vector = (np.cos(angle), np.sin(angle))
         group_tilts.append(tilt_vector)
-        # Randomly assign the speed multiplier: 50% chance for 0.5 (half-speed) or 1.0 (normal speed)
         speed = 0.3 if random.random() < 0.5 else 1.0
         group_speeds.append(speed)
 
@@ -170,7 +167,14 @@ def makeDatasetDynamicPerlin(
     all_positions_cpu = all_positions.cpu()
     adjacency_dynamic_cpu = adjacency_dynamic.cpu()
 
-    return all_positions_cpu, adjacency_dynamic_cpu
+    edge_indices = []
+    for t in range(time_steps):
+        adj_t = adjacency_dynamic_cpu[t]
+        edge_index_t = adjacency_to_edge_index(adj_t)
+        edge_index_t = edge_index_t.to(device)
+        edge_indices.append(edge_index_t)
+
+    return all_positions_cpu, adjacency_dynamic_cpu, edge_indices
 
 def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
     """
@@ -195,29 +199,38 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
 
     # Choose a random ego node index.
     ego_idx = random.randint(0, total_nodes - 1)
-    # print(f"Chosen ego node index: {ego_idx}")
 
     # Determine the ego's neighbors:
     # For each time step, check which nodes are connected to the ego node.
     # Then take the union (logical OR) over all time steps.
     # Note: Since the dynamic adjacency matrices are symmetric, you can use either
     # the row or the column corresponding to the ego.
-    union_neighbors = (adjacency_dynamic_cpu[:, ego_idx, :] > 0).any(dim=0)
-    # Always include the ego node itself.
+    EgoMask = (adjacency_dynamic_cpu[:, ego_idx, :] > 0)
+    union_neighbors = EgoMask.any(dim=0)
     union_neighbors[ego_idx] = True
+
 
     # Get the indices of the ego node and its neighbors.
     neighbor_indices = torch.nonzero(union_neighbors, as_tuple=False).flatten()
-    # print(f"Ego network contains {len(neighbor_indices)} nodes: {neighbor_indices.tolist()}")
 
+    
     # Filter the positions tensor to include only the selected nodes.
     ego_positions = all_positions_cpu[:, neighbor_indices, :]
+
 
     # For the dynamic adjacency, extract the submatrix (for each time step)
     # corresponding to the chosen nodes.
     ego_adjacency = adjacency_dynamic_cpu[:, neighbor_indices][:, :, neighbor_indices]
 
-    return ego_idx, ego_positions, ego_adjacency
+    ego_edge_indices = []
+    for t in range(time_steps):
+        adj_t = ego_adjacency[t]
+        ego_edge_index_t = adjacency_to_edge_index(adj_t)
+        print("AHH:{}",format(ego_edge_index_t.shape))
+        ego_edge_indices.append(ego_edge_index_t)
+
+    return ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask
+    
 
 
 if __name__ == '__main__':
@@ -232,7 +245,7 @@ if __name__ == '__main__':
     noise_strength = 2      # influence of the noise gradient
     tilt_strength = 0.25     # constant bias per group
 
-    all_positions_cpu, adjacency_dynamic_cpu = makeDatasetDynamicPerlin(
+    all_positions_cpu, adjacency_dynamic_cpu, edge_indices = makeDatasetDynamicPerlin(
         node_amt=node_amt,
         group_amt=group_amt,
         std_dev=1,
@@ -251,8 +264,9 @@ if __name__ == '__main__':
     # Visualize the evolving graph using the animate module.
     # plot_faster(all_positions_cpu, adjacency_dynamic_cpu)
 
-    ego_index, ego_positions, ego_adjacency = getEgo(all_positions_cpu, adjacency_dynamic_cpu)
+    ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu)
 
+    # print(ego_adjacency.shape)
     print("GUH")
     
     plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_network_indices=ego_positions)

@@ -6,7 +6,7 @@ from sklearn.cluster import SpectralClustering
 from itertools import permutations
 
 def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None, 
-                ego_idx=None, ego_network_indices=None, save_path="animation.gif"):
+                ego_idx=None, ego_network_indices=None, pred_groups=None, save_path="animation.gif"):
     """
     Animate the dynamic graph. If embedding is provided, a t-SNE plot is saved.
     If ego information is provided (ego_idx and ego_network_indices), nodes (and edges)
@@ -30,12 +30,14 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
         n_clusters = 4
         spectral_clustering = SpectralClustering(n_clusters=n_clusters, 
                                                  affinity='nearest_neighbors', 
-                                                 n_neighbors=50, random_state=42)
+                                                 n_neighbors=2, random_state=42)
         predicted_labels = torch.from_numpy(
             spectral_clustering.fit_predict(embed.detach().cpu().numpy()[0])
         ).to(device=device)
-
-        actual_labels = all_positions_cpu[0, :, 2].long().to(device)
+        if ego_idx is not None:
+            actual_labels = ego_network_indices[0, :, 2].long().to(device)
+        else:
+            actual_labels = all_positions_cpu[0, :, 2].long().to(device)
         unique_actual = torch.unique(actual_labels).tolist()
 
         unique_pred = torch.unique(predicted_labels).tolist()
@@ -72,10 +74,16 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
         tsneEmbed = TSNE(perplexity=5).fit_transform(embed.cpu().detach().numpy()[0])
         figEmbed = plt.figure(figsize=(10, 10)) 
         plt.title("Model Output Embeddings Visualized")
-        for node in range(all_positions_cpu.size(dim=1)):
-            group = int(all_positions_cpu[0, node, 2].item())
-            plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
-                        c=colors[group % len(colors)], alpha=0.8)
+        if ego_idx is not None:
+            for node in range(ego_network_indices.size(dim=1)):
+                group = int(ego_network_indices[0, node, 2].item())
+                plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
+                            c=colors[group % len(colors)], alpha=0.8)
+        else:
+            for node in range(all_positions_cpu.size(dim=1)):
+                group = int(all_positions_cpu[0, node, 2].item())
+                plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
+                            c=colors[group % len(colors)], alpha=0.8)
         plt.savefig("tsne_embeddings.png")
         plt.close()
 
@@ -122,7 +130,7 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
                     # Adjust edge opacity based on ego network membership if provided.
                     if ego_network_set is not None:
                         if (i in ego_network_set) and (j in ego_network_set):
-                            edge_alpha = 0.7
+                            edge_alpha = 0.6
                         else:
                             edge_alpha = 0.1
                     else:
@@ -175,6 +183,24 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
             ax.scatter(ego_x, ego_y, s=200, marker='*', c=colors[int(all_positions_cpu[t, ego_idx, 2].item()) % len(colors)], zorder=10, alpha=0.5)
             ax.text(ego_x, ego_y, "Anchor", fontsize=12, color='black', zorder=11,
                     verticalalignment='bottom', horizontalalignment='right')
+            
+        # print(ego_network_indices)
+        # Show incorrect predictions
+        if pred_groups is not None:
+            i = 0
+            for node in ego_network_indices:
+                group = int(all_positions_cpu[0, node, 2].item())
+                if pred_groups[i] != group:
+                    ax.scatter(
+                    all_positions_cpu[t, node, 0],
+                    all_positions_cpu[t, node, 1],
+                    c='red',
+                    alpha=0.2,
+                    s=100
+                )
+                
+                i += 1
+
 
         ax.set_title(f"Time Step {t}")
         ax.set_xlabel("X")

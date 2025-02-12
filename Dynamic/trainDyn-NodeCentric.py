@@ -18,10 +18,10 @@ class GCNDataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        positions, adjacency = self.data[idx]
+        positions, adjacency, edge_indices, ego_idx, ego_positions, ego_adjacency, ego_edge_indices = self.data[idx]
         # positions: shape [time_steps, node_amt, 3]
         # adjacency: shape [time_steps, node_amt, node_amt]
-        return positions, adjacency
+        return positions, adjacency, edge_indices, ego_idx, ego_positions, ego_adjacency, ego_edge_indices
 
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
@@ -221,13 +221,25 @@ class InfoNCELoss(nn.Module):
         loss = self.ce(logits, labels)
         return loss
 
+def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn):
+    model.train()
+    epoch_loss=0.0
+    print("Training epoch")
+    for positions, adjacency, edge_indices, ego_idx, ego_positions, ego_adjacency, ego_edge_indices in dataloader:
+        batch_embeddings = []
+        batch_groups = []
+
+        # Remove groupID from data
+        x = ego_positions[:, :, :, :2]
+        # x = [batch, timesteps, node_amt, 2]
+        emb = model(x, ego_edge_indices, ego_adjacency)
 
 
 def train_one_epoch(model, dataloader, optimizer, device, infonce_loss_fn):
     model.train()
     epoch_loss = 0.0
-    
-    for batch_idx, sample_list in enumerate(dataloader):
+    print("Training epoch")
+    for batch_idx, sample_list in tqdm(enumerate(dataloader)):
         # sample_list is a list of (positions, adjacency), 
         # one for each item in the batch. We'll accumulate the loss.
         # Then backprop once per batch.
@@ -302,7 +314,8 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
     model.eval()
     epoch_loss = 0.0
     
-    for batch_idx, sample_list in enumerate(dataloader):
+    print("Validating")
+    for batch_idx, sample_list in tqdm(enumerate(dataloader)):
         batch_embeddings = []
         batch_groups = []
 
@@ -394,7 +407,7 @@ def main():
     # --- Training Loop ---
     best_val_loss = float('inf')
     
-    for epoch in tqdm(range(1, args.epochs+1)):
+    for epoch in range(1, args.epochs+1):
         train_loss = train_one_epoch(model, train_loader, optimizer, device, infonce_loss_fn)
         val_loss = validate_one_epoch(model, val_loader, device, infonce_loss_fn)
         

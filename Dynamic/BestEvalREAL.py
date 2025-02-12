@@ -176,7 +176,7 @@ if __name__ == "__main__":
     acc_all = []
     for i in tqdm(range(500)):
         positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
-        emb = model(positions[:, :, :2], edge_indices, ego_mask, eval=True)
+        emb = model(positions[:, :, :2], adjacency, ego_mask, eval=True)
 
         emb_np = emb.cpu().detach().numpy().squeeze(0)
         emb_np = emb_np[ego_mask.cpu()[-1]]
@@ -195,8 +195,9 @@ if __name__ == "__main__":
         print("Best clustering accuracy: {:.4f}".format(accuracy))
         # embed=emb[0, ego_mask.cpu()[-1]],
         # pred_groups=pred_groups
-        # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu())
-
+        plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu())
+        input("Press Enter to continue...")
+        
         acc_all.append(accuracy)
 
     acc_avg = sum(acc_all) / len(acc_all)

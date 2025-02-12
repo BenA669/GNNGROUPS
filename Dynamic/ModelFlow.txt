@@ -1,0 +1,54 @@
+Timestep = 20, Batch = 4, Max_Nodes = 400, Features = 2
+X = Number of nodes in the Ego Network at that timestamp
+[Model Input]
+    - Node Features                     [Timestep, Batch*Max_Nodes, Features]           [20, 1600, 2] 
+    - Node Adjacency                    [Timestep, Batch*Max_Nodes, Batch*Max_Nodes]    [20, 1600, 1600]
+    - Ego Network Mask                  [Timestep, Batch*Max_Nodes]                     [20, 1600]
+
+    - The model's input is the Global Feature Matrix, Global Adjacency Matrix, and a Ego Network Mask
+    - However model will never see an unmasked Feature or Adjacency Matrix
+
+[GCN Pass]
+    For each Timestep t:
+        - Node Feature      at time t   [Batch*Max_Nodes, Features]                     [1600, 2]
+        - Node Adjacency    at time t   [Batch*Max_Nodes, Batch*Max_Nodes]              [1600, 1600]
+        - Ego Network Mask  at time t   [Batch*Max_Nodes]                               [1600]        
+        - timestamp Node Feature    masked      [X, Features]                                   [X, 2]
+        - timestamp Node Adjacency  masked      [X, X]                                          [X, X]
+
+        - Get Node, Adjacency, and Mask at each Timestamp
+        - Then mask the Feature and Adjacency with the Ego Network Mask
+        
+        - GCN1(tNF, tNA) -> [X, Hidden_Dim] -> GCN2(tNF, tNA) -> [X, Hidden_Dim]
+        - GCN Output                    [X, Hidden_Dim]                                 [X, 64]
+        - GCN Output        Padded      [Batch*Max_Nodes, Hidden_Dim]                   [1600, 64]
+
+        - Input the Masked Feature and Adjacency matrix into the GCNs
+        - Then pad the output so it can be passed into the LSTM easier
+
+    - All GCN Output Padded             [Timestep, Batch*Max_Nodes, Hidden_Dim]         [20, 1600, 64]
+
+    - Our output for the entire GCN pass is a matrix that has an embedding for every node the Ego node sees
+    - Embeddings for nodes that aren't part of the Ego network is 0
+
+[LSTM Pass]
+    - LSTM(All GCN Output Padded) -> [Batch*Max_Nodes, Hidden_Dim]
+    - LSTM Output                       [Batch*Max_Nodes, Hidden_Dim]                   [1600, 64]
+    - LSTM Output           Reshaped    [Batch, Max_Nodes, Hidden_Dim]                  [4, 400, 64]
+
+    - Pass the collected GCN Outputs into the LSTM
+    - Reshape the output to seperate the Batches
+
+[FC Pass]
+    - FC(LSTM Output Reshaped) -> [Batch, Max_Nodes, Output_Dim]                        [4, 400, 16]
+
+    - Pass the output of the LSTM to a FC to get the 16 size embeddings for each node
+
+[Model Output]
+    - [Batch, Max_Nodes, Output_Dim], [4, 400, 16]
+
+    - 16 Embedding for each Node for each Batch only for the latest timestamp
+
+[Model Loss]
+    - The model is lossed based on the group truth labels of only the latest timestamp.
+    - Contrastive loss to make same group embedding similar and different group embeddings different

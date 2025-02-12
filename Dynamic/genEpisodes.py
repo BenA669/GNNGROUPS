@@ -11,7 +11,7 @@ if __name__ == "__main__":
     intra_prob = 0.05
     inter_prob = 0.001
 
-    NUM_SAMPLES_TEST = 500
+    NUM_SAMPLES_TEST = 1000
     NUM_SAMPLES_VAL = 500
 
     test_data = []

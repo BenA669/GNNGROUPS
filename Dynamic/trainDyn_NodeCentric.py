@@ -7,24 +7,24 @@ import numpy as np
 from model import TemporalGCN 
 from makeEpisode import getEgo
 from torch.nn.utils.rnn import pad_sequence
+from GraphDataset import GCNDataset, collate_fn
 
-
-class GCNDataset(Dataset):
-    def __init__(self, data_path):
-        super().__init__()
-        self.data = torch.load(data_path)
+# class GCNDataset(Dataset):
+#     def __init__(self, data_path):
+#         super().__init__()
+#         self.data = torch.load(data_path)
         
-    def __len__(self):
-        return len(self.data)
+#     def __len__(self):
+#         return len(self.data)
     
-    def __getitem__(self, idx):
-        (positions, adjacency, edge_indices, 
-        ego_idx, ego_positions, ego_adjacency, 
-        ego_edge_indices, EgoMask) = self.data[idx]
-        # Convert everything to tensors
-        return (positions, adjacency, edge_indices, 
-                ego_idx, ego_positions, ego_adjacency, 
-                ego_edge_indices, EgoMask)
+#     def __getitem__(self, idx):
+#         (positions, adjacency, edge_indices, 
+#         ego_idx, ego_positions, ego_adjacency, 
+#         ego_edge_indices, EgoMask) = self.data[idx]
+#         # Convert everything to tensors
+#         return (positions, adjacency, edge_indices, 
+#                 ego_idx, ego_positions, ego_adjacency, 
+#                 ego_edge_indices, EgoMask)
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
     # (node_i, node_j) for all 1-entries
@@ -32,62 +32,62 @@ def adjacency_to_edge_index(adj_t: torch.Tensor):
     return edge_index
 
 
-def collate_fn(batch):
-    # Unzip the batch (each sample is a tuple)
-    positions, adjacency, edge_indices, ego_idx, ego_positions, ego_adjacency, ego_edge_indices, ego_mask = zip(*batch)
+# def collate_fn(batch):
+#     # Unzip the batch (each sample is a tuple)
+#     positions, adjacency, edge_indices, ego_idx, ego_positions, ego_adjacency, ego_edge_indices, ego_mask = zip(*batch)
 
-    print(type(ego_positions))
-    exit()
+#     print(type(ego_positions))
+#     exit()
     
-    # Stack the ego_positions (and any other elements you want to batch)
-    positions_batch = torch.stack(positions, dim=0) # [batch_size, time_stamp, node_amt, 3]
-    ego_mask_batch = torch.stack(ego_mask, dim=0)
+#     # Stack the ego_positions (and any other elements you want to batch)
+#     positions_batch = torch.stack(positions, dim=0) # [batch_size, time_stamp, node_amt, 3]
+#     ego_mask_batch = torch.stack(ego_mask, dim=0)
 
-    big_batch_edges = []
-    big_batch_positions = []
-    # edge_indicies = [batch, timestamp, [2, N]]
-    B = len(edge_indices)
-    T = len(edge_indices[0])
-    max_nodes = positions_batch.size(dim=2)
-    # print("Batch size: {}".format(B))
-    for t in range(T):
-        edges_at_t = []
-        positions_at_t = []
-        for b in range(B):
-            # Get the edge-index for batch element b at timestamp t.
-            e = edge_indices[b][t]  # shape [2, N_b]
-            p = positions_batch[b, t, :, :2] # shape [node_amt, 3]
+#     big_batch_edges = []
+#     big_batch_positions = []
+#     # edge_indicies = [batch, timestamp, [2, N]]
+#     B = len(edge_indices)
+#     T = len(edge_indices[0])
+#     max_nodes = positions_batch.size(dim=2)
+#     # print("Batch size: {}".format(B))
+#     for t in range(T):
+#         edges_at_t = []
+#         positions_at_t = []
+#         for b in range(B):
+#             # Get the edge-index for batch element b at timestamp t.
+#             e = edge_indices[b][t]  # shape [2, N_b]
+#             p = positions_batch[b, t, :, :2] # shape [node_amt, 3]
 
-            # Offset the node indices so that nodes in batch b get indices in [b*max_nodes, (b+1)*max_nodes)
-            e_offset = e + b * max_nodes
-            p_offset = p + b*max_nodes
+#             # Offset the node indices so that nodes in batch b get indices in [b*max_nodes, (b+1)*max_nodes)
+#             e_offset = e + b * max_nodes
+#             p_offset = p + b*max_nodes
             
-            positions_at_t.append(p_offset)
-            edges_at_t.append(e_offset)
-        # Concatenate all batches’ edge indices for this timestamp along the second dimension.
-        combined_edges = torch.cat(edges_at_t, dim=1).to(torch.device('cuda:0'))  # shape [2, total_edges_at_t]
-        big_batch_edges.append(combined_edges)
+#             positions_at_t.append(p_offset)
+#             edges_at_t.append(e_offset)
+#         # Concatenate all batches’ edge indices for this timestamp along the second dimension.
+#         combined_edges = torch.cat(edges_at_t, dim=1).to(torch.device('cuda:0'))  # shape [2, total_edges_at_t]
+#         big_batch_edges.append(combined_edges)
 
-        combined_pos = torch.cat(positions_at_t, dim=0).to(torch.device('cuda:0'))
-        big_batch_positions.append(combined_pos)
+#         combined_pos = torch.cat(positions_at_t, dim=0).to(torch.device('cuda:0'))
+#         big_batch_positions.append(combined_pos)
 
-    # print(type(big_batch_edges[0]))
-    # print(len(big_batch_edges[1][0]))
+#     # print(type(big_batch_edges[0]))
+#     # print(len(big_batch_edges[1][0]))
     
-    # You can also stack or combine the other items if needed.
-    # For now, we'll return all components in a dictionary:
-    return {
-        'positions': positions_batch,
-        'adjacency': adjacency,
-        'edge_indices': edge_indices,
-        'ego_idx': ego_idx,
-        'ego_positions': ego_positions,  # This now has shape [batch, timesteps, node_amt, 3]
-        'ego_adjacency': ego_adjacency,
-        'ego_edge_indices': ego_edge_indices,
-        'ego_mask_batch': ego_mask_batch,
-        'big_batch_edges': big_batch_edges,
-        'big_batch_positions': big_batch_positions,
-    }
+#     # You can also stack or combine the other items if needed.
+#     # For now, we'll return all components in a dictionary:
+#     return {
+#         'positions': positions_batch,
+#         'adjacency': adjacency,
+#         'edge_indices': edge_indices,
+#         'ego_idx': ego_idx,
+#         'ego_positions': ego_positions,  # This now has shape [batch, timesteps, node_amt, 3]
+#         'ego_adjacency': ego_adjacency,
+#         'ego_edge_indices': ego_edge_indices,
+#         'ego_mask_batch': ego_mask_batch,
+#         'big_batch_edges': big_batch_edges,
+#         'big_batch_positions': big_batch_positions,
+#     }
 
 class InfoNCELoss(nn.Module):
     def __init__(self, temperature=0.1):
@@ -195,9 +195,10 @@ def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn
         ego_mask_batch = batch['ego_mask_batch']
         big_batch_edges = batch['big_batch_edges']
         big_batch_positions = batch['big_batch_positions']
+        big_batch_adjacency = batch['big_batch_adjacency']
 
 
-        emb = model(big_batch_positions, big_batch_edges, ego_mask_batch)
+        emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
         
         loss = infonce_loss_fn(emb, groups)
         optimizer.zero_grad()
@@ -221,9 +222,10 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
         ego_mask_batch = batch['ego_mask_batch']
         big_batch_edges = batch['big_batch_edges']
         big_batch_positions = batch['big_batch_positions']
+        big_batch_adjacency = batch['big_batch_adjacency']
 
 
-        emb = model(big_batch_positions, big_batch_edges, ego_mask_batch)
+        emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
         
         loss = infonce_loss_fn(emb, groups)
         epoch_loss += loss.item()

@@ -1,8 +1,32 @@
 import torch
 import torch.nn as nn
-from datasettest import GCNDataset, collate_fn
+from GraphDataset import GCNDataset, collate_fn
 from torch_geometric.nn import GCNConv
 from torch.utils.data import DataLoader
+
+def tensor_to_edge_index(adj):
+    """
+    Convert an NxN adjacency matrix (PyTorch tensor) to an edge index tensor of shape [2, num_edges].
+
+    Parameters:
+        adj (torch.Tensor): A square (NxN) tensor representing the adjacency matrix.
+        
+    Returns:
+        torch.Tensor: A tensor of shape [2, num_edges] where the first row contains the source nodes
+                      and the second row contains the target nodes of the edges.
+    """
+    # Ensure the tensor is square
+    if adj.dim() != 2 or adj.size(0) != adj.size(1):
+        raise ValueError("The input tensor must be a square (NxN) matrix.")
+
+    # Find the indices of nonzero entries (which represent edges)
+    # as_tuple=True returns separate coordinate tensors for rows and columns.
+    src, dst = torch.nonzero(adj, as_tuple=True)
+    
+    # Stack them to form an edge_index tensor of shape [2, num_edges]
+    edge_index = torch.stack([src, dst], dim=0)
+    return edge_index
+
 
 class TemporalGCN(nn.Module):
     def __init__(self, input_dim, output_dim, num_nodes, num_timesteps, hidden_dim=64):
@@ -23,59 +47,64 @@ class TemporalGCN(nn.Module):
         self.fc = nn.Linear(hidden_dim, output_dim)
         
 
-    def forward(self, x, edge_indices, ego_mask, eval=False):
+    def forward(self, x, big_batch_adjacency, ego_mask, eval=False):
         # x = [Time, Batch*Nodes, (x,y)]
         # ego_mask = [Batch, Time, Nodes]
         
-        # [Batch, Time, Nodes] -> [Time, Batch*Nodes]
-        x_ego_mask = ego_mask.permute(1, 0, 2).reshape(20, -1) # Prepare ego_mask to mask x
+        
+        
         # x_ego_mask = [Time, Batch*Nodes]
         # print("Ego Mask Shape:{}".format(x_ego_mask.shape))
         # print("x Shape:{}".format(x.shape))
+        # print("big_batch_adjacency shape: {}".format(big_batch_adjacency.shape))
 
         x_out = []
 
         # In eval mode?
         if eval:
             B = 1
+            x_ego_mask = ego_mask
+            max_nodes = ego_mask.size(dim=1)
         else:
             B = len(ego_mask)
+            # [Batch, Time, Nodes] -> [Time, Batch*Nodes]
+            x_ego_mask = ego_mask.permute(1, 0, 2).reshape(20, -1) # Prepare ego_mask to mask x
+            max_nodes = ego_mask.size(dim=2)
 
-
-        # print("B? : {}".format(B))
-        # print("X_OUT shape0 : {}".format(x[0].shape))
+        x_placeholder = torch.zeros(self.num_timesteps, max_nodes*B, self.hidden_dim).to(self.device)
+        # print("X_placeholder shape: {}".format(x_placeholder.shape))
         for t in range(self.num_timesteps):
-            x_t = x[t]
-            e_t = edge_indices[t]
-            ego_mask_t = x_ego_mask[t]
+            x_t = x[t]                      # Get features at timestamp t
+            a_t = big_batch_adjacency[t]    # Get adjacency at timestamp t
+            ego_mask_t = x_ego_mask[t]      # Get ego mask at timestamp t
             
-            x_t = x_t[ego_mask_t]
+            x_t = x_t[ego_mask_t]                   # Mask features
+            a_t = a_t[ego_mask_t][:, ego_mask_t]    # Mask adjacency
+            e_t = tensor_to_edge_index(a_t)         # Convert adjacency matrix to edge index (2, Y)
             
-            print("x_t shape: {}".format(x_t.shape))
-            print("e_t shape: {}".format(e_t.shape))
-
-            exit()
-
-            x_t = self.gcn1(x_t, e_t)
+            x_t = self.gcn1(x_t, e_t)               # Pass masked features and adjacency
             x_t = torch.relu(x_t)
             x_t = self.gcn2(x_t, e_t)
-            x_out.append(x_t)
+
+            
+            ego_idx = torch.nonzero(ego_mask_t).flatten().to(self.device)
+            x_placeholder[t, ego_idx] = x_t         # Insert embeddings into their corresponding place in the global matrix (Padding)
 
         
-        x_out = torch.stack(x_out, dim=0)
+        # x_out = torch.stack(x_out, dim=0)
         # print("X_OUT shape1 : {}".format(x_out.shape))
 
         
-        mask = (~ego_mask.transpose(0, 1).reshape(20, -1, 1)).float().to(self.device)
+        # mask = (~ego_mask.transpose(0, 1).reshape(20, -1, 1)).float().to(self.device)
         # Zero out the masked positions:
-        x_out_masked = x_out * mask
-        _, (h_n, _) = self.lstm(x_out_masked)
+        # x_out_masked = x_placeholder * mask
+        _, (h_n, _) = self.lstm(x_placeholder)
         x_out = h_n[-1]  # Get last layer's hidden state -> [batch, node_amt * hidden_dim]
 
-        x_out = x_out.view(B, 400, -1) # [batch, node_amt * hidden_dim] -> [batch_size, num_nodes, output_dim]
-        # print("X_OUT shape 2: {}".format(x_out.shape))
-        x_out = self.fc(x_out)  
         
+        x_out = x_out.view(B, 400, -1) # [batch, node_amt * hidden_dim] -> [batch_size, num_nodes, output_dim]
+        
+        x_out = self.fc(x_out)  
         return x_out
 
 if __name__ == '__main__':
@@ -114,9 +143,10 @@ if __name__ == '__main__':
         big_batch_edges = batch['big_batch_edges']
         big_batch_positions = batch['big_batch_positions']
         big_batch_ego_edges = batch['big_batch_ego_edges']
+        big_batch_adjacency = batch['big_batch_adjacency']
 
         groups = positions[:, 0, :, 2]
 
-        emb = model(big_batch_positions, big_batch_ego_edges, ego_mask_batch)
+        emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
 
         break

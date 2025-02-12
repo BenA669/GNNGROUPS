@@ -35,18 +35,13 @@ def collate_fn(batch):
 
     max_nodes = positions_batch.size(dim=2)
     
-    
-    
 
     # [batchsize, time_stamp, node_amt, node_amt] -> [time_stamp, node_amt*batchsize, node_amt*batchsize]
-
-    # print(big_batch_adjacency.shape)
-    exit()
 
     big_batch_edges = []
     big_batch_ego_edges = []
     big_batch_positions = []
-    big_batch_adjacency = torch.zeros(T, max_nodes*B, max_nodes*B)
+    big_batch_adjacency = []
     # edge_indicies = [batch, timestamp, [2, N]]
     for t in range(T):
         edges_at_t = []
@@ -82,13 +77,16 @@ def collate_fn(batch):
         combined_pos = torch.cat(positions_at_t, dim=0).to(torch.device('cuda:0'))
         big_batch_positions.append(combined_pos)
 
-        combined_adj = torch.block_diag(adjacency_at_t)
-
+        stacked_adj = torch.stack(adjacency_at_t, dim=0)
+        combined_adj = torch.block_diag(*stacked_adj)
+        big_batch_adjacency.append(combined_adj)
         
 
     big_batch_positions = torch.stack(big_batch_positions, dim=0).to(torch.device('cuda:0'))
+    big_batch_adjacency = torch.stack(big_batch_adjacency, dim=0).to(torch.device('cuda:0'))
     # print(type(big_batch_edges[0]))
     # print(len(big_batch_edges[1][0]))
+    # print(big_batch_adjacency.shape)
     
     # You can also stack or combine the other items if needed.
     # For now, we'll return all components in a dictionary:
@@ -104,6 +102,7 @@ def collate_fn(batch):
         'big_batch_edges': big_batch_edges,
         'big_batch_positions': big_batch_positions,
         'big_batch_ego_edges': big_batch_ego_edges,
+        'big_batch_adjacency': big_batch_adjacency,
     }
 
 if __name__ == '__main__':

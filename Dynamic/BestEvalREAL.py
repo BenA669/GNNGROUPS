@@ -5,6 +5,7 @@ from sklearn.cluster import KMeans
 import numpy as np
 import itertools
 from animate import plot_faster
+from tqdm import tqdm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -173,7 +174,7 @@ if __name__ == "__main__":
     model = getModel()
 
     acc_all = []
-    for i in range(500):
+    for i in tqdm(range(500)):
         positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
         emb = model(positions[:, :, :2], edge_indices, ego_mask, eval=True)
 

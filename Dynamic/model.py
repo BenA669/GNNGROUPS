@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 class TemporalGCN(nn.Module):
     def __init__(self, input_dim, output_dim, num_nodes, num_timesteps, hidden_dim=64):
         super(TemporalGCN, self).__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.num_nodes = num_nodes
         self.num_timesteps = num_timesteps
         self.hidden_dim = hidden_dim
@@ -20,10 +21,14 @@ class TemporalGCN(nn.Module):
         
         # Fully connected output layer
         self.fc = nn.Linear(hidden_dim, output_dim)
+        
 
     def forward(self, x, edge_indices, ego_mask):
         
         x_out = []
+        # print("B? : {}".format(len(ego_mask)))
+        B = len(ego_mask)
+        # print("X_OUT shape0 : {}".format(x[0].shape))
         for t in range(self.num_timesteps):
             x_t = x[t]
             e_t = edge_indices[t]
@@ -33,22 +38,20 @@ class TemporalGCN(nn.Module):
             x_out.append(x_t)
 
         x_out = torch.stack(x_out, dim=0)
+        # print("X_OUT shape1 : {}".format(x_out.shape))
 
         
-        mask = (~ego_mask.transpose(0, 1).reshape(20, -1, 1)).float().to(device)
+        mask = (~ego_mask.transpose(0, 1).reshape(20, -1, 1)).float().to(self.device)
         # Zero out the masked positions:
         x_out_masked = x_out * mask
-
-        print(mask.shape)
-        print(x_out.shape)
-
-        _, (h_n, _) = self.lstm(x_out)
+        _, (h_n, _) = self.lstm(x_out_masked)
         x_out = h_n[-1]  # Get last layer's hidden state -> [batch, node_amt * hidden_dim]
 
-        x_out = x_out.view(4, 400, -1) # [batch, node_amt * hidden_dim] -> [batch_size, num_nodes, output_dim]
+        x_out = x_out.view(B, 400, -1) # [batch, node_amt * hidden_dim] -> [batch_size, num_nodes, output_dim]
+        # print("X_OUT shape 2: {}".format(x_out.shape))
         x_out = self.fc(x_out)  
         
-        print("DONE YIPPIE")
+        print("one pass done")
         return x_out
         
         #####
@@ -150,12 +153,14 @@ if __name__ == '__main__':
     dataloader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn, shuffle=True)
 
     for batch_idx, batch in enumerate(dataloader):
-        positions = batch['positions']
+        positions = batch['positions'] # batch, timestamp, node_amt, 3
         edge_indices = batch['edge_indices']
         ego_mask_batch = batch['ego_mask_batch']
         big_batch_edges = batch['big_batch_edges']
         big_batch_positions = batch['big_batch_positions']
 
+        groups = positions[:, 0, :, 2]
+        print("Groups shape: {}".format(groups.shape))
 
         emb = model(big_batch_positions, big_batch_edges, ego_mask_batch)
 

@@ -206,6 +206,7 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
     # Note: Since the dynamic adjacency matrices are symmetric, you can use either
     # the row or the column corresponding to the ego.
     EgoMask = (adjacency_dynamic_cpu[:, ego_idx, :] > 0)
+    EgoMask[:, ego_idx] = True
     union_neighbors = EgoMask.any(dim=0)
     union_neighbors[ego_idx] = True
 
@@ -226,7 +227,6 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu):
     for t in range(time_steps):
         adj_t = ego_adjacency[t]
         ego_edge_index_t = adjacency_to_edge_index(adj_t)
-        print("AHH:{}",format(ego_edge_index_t.shape))
         ego_edge_indices.append(ego_edge_index_t)
 
     return ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask

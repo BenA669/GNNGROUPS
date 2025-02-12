@@ -23,11 +23,16 @@ class TemporalGCN(nn.Module):
         self.fc = nn.Linear(hidden_dim, output_dim)
         
 
-    def forward(self, x, edge_indices, ego_mask):
+    def forward(self, x, edge_indices, ego_mask, eval=False):
+        # x = [Time, ]
         
         x_out = []
-        # print("B? : {}".format(len(ego_mask)))
-        B = len(ego_mask)
+        
+        if eval:
+            B = 1
+        else:
+            B = len(ego_mask)
+        # print("B? : {}".format(B))
         # print("X_OUT shape0 : {}".format(x[0].shape))
         for t in range(self.num_timesteps):
             x_t = x[t]
@@ -51,7 +56,6 @@ class TemporalGCN(nn.Module):
         # print("X_OUT shape 2: {}".format(x_out.shape))
         x_out = self.fc(x_out)  
         
-        print("one pass done")
         return x_out
         
         #####

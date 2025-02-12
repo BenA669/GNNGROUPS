@@ -1,119 +1,49 @@
-import torch
-from model import TemporalGCN 
+from model import TemporalGCN
+from torch import torch
 from makeEpisode import makeDatasetDynamicPerlin, getEgo
-from trainDyn import adjacency_to_edge_index
-from sklearn.manifold import TSNE
 from sklearn.cluster import KMeans
 import numpy as np
-import matplotlib.pyplot as plt
-from animate import plot_faster
-from sklearn.cluster import SpectralClustering
 import itertools
+from animate import plot_faster
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def getData():
+    time_steps = 20
+    group_amt = 4
+    node_amt = 400
+    distance_threshold = 2
+    intra_prob = 0.05
+    inter_prob = 0.001
 
-input_dim = 2
-output_dim = 16
-num_nodes = 400 
-num_timesteps = 20 
-hidden_dim = 64 
+    NUM_SAMPLES_TEST = 100
+    NUM_SAMPLES_VAL = 100
 
+    test_data = []
+    val_data = []
 
-model = TemporalGCN(
-    input_dim=input_dim,
-    output_dim=output_dim,
-    num_nodes=num_nodes,
-    num_timesteps=num_timesteps,
-    hidden_dim=hidden_dim
-).to(device)
+    noise_scale = 0.05      # frequency of the noise
+    noise_strength = 2      # influence of the noise gradient
+    tilt_strength = 0.25     # constant bias per group
 
+    positions, adjacency, edge_indices = makeDatasetDynamicPerlin(
+        node_amt=node_amt,
+        group_amt=group_amt,
+        std_dev=1,
+        time_steps=time_steps,
+        distance_threshold=2,
+        intra_prob=0.05,
+        inter_prob=0.001,
+        noise_scale=noise_scale,
+        noise_strength=noise_strength,
+        tilt_strength=tilt_strength,
+        octaves=1,
+        persistence=0.5,
+        lacunarity=2.0
+    )
+    ego_idx, ego_positions, ego_adjacency, ego_edge_indices, ego_mask = getEgo(positions, adjacency)
+    return positions.to(device), adjacency.to(device), edge_indices, ego_idx, ego_mask.to(device), ego_positions.to(device)
 
-checkpoint_path = "best_model.pt"
-model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-
-
-model.eval()
-
-noise_scale = 0.05      # frequency of the noise
-noise_strength = 2      # influence of the noise gradient
-tilt_strength = 0.25  
-time_steps = 20
-group_amt = 4
-node_amt = 400
-
-
-
-print("Model successfully loaded!")
-
-all_positions_cpu, adjacency_dynamic_cpu, edge_indices = makeDatasetDynamicPerlin(
-            node_amt=node_amt,
-            group_amt=group_amt,
-            std_dev=1,
-            time_steps=time_steps,
-            distance_threshold=2,
-            intra_prob=0.05,
-            inter_prob=0.001,
-            noise_scale=noise_scale,
-            noise_strength=noise_strength,
-            tilt_strength=tilt_strength,
-            octaves=1,
-            persistence=0.5,
-            lacunarity=2.0
-        )
-
-ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu)
-
-#Batchify
-
-emb = model(all_positions_cpu[:, :, :2].to(device), edge_indices, EgoMask.to(device))
-exit()
-
-
-# group_ids = ego_positions[0, :, 2].long()
-# time_steps, node_amt, _ = ego_positions.shape
-
-# # Rearrange positions from [time_steps, node_amt, 3] to [node_amt, time_steps, 3]
-# ego_positions_no_id = ego_positions[:, :, :2]
-# positions_transposed = ego_positions_no_id.permute(1, 0, 2)  # shape: [node_amt, time_steps, 3]
-# x = positions_transposed.unsqueeze(0).to(device)   # [1, node_amt, time_steps, 3]
-
-# # Convert adjacency to list of edge_indices
-# edge_indices = []
-# for t in range(time_steps):
-#     adj_t = ego_adjacency[t]
-#     # Convert to edge_index
-#     edge_index_t = adjacency_to_edge_index(adj_t)
-#     edge_index_t = edge_index_t.to(device)
-#     edge_indices.append(edge_index_t)
-
-# # Forward pass
-# emb = model(x, edge_indices)  # shape: [1, node_amt, output_dim]
-
-
-
-# predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)
-# print(emb.shape)
-
-
-
-# tsneEmbed = TSNE(perplexity=5).fit_transform(emb.cpu().detach().numpy()[0])
-
-
-# fig = plt.figure(figsize=(10, 10)) 
-# plt.title("Model Output Embeddings Visualized")
-# plt.scatter(tsneEmbed[:, 0], tsneEmbed[:, 1], alpha=0.8)
-# plt.show()
-
-# plot(positions, adjacency)
-
-
-emb_np = emb.cpu().detach().numpy().squeeze(0)  # shape: (node_amt, output_dim)
-
-
-# =============================================================================
-# Define a cross entropy clustering routine (GMM-EM style)
-# =============================================================================
 def cross_entropy_clustering(embeddings, n_clusters, n_iters=100):
     """
     Cluster the data using an EM algorithm on a Gaussian mixture model,
@@ -183,17 +113,6 @@ def cross_entropy_clustering(embeddings, n_clusters, n_iters=100):
     final_labels = responsibilities.argmax(axis=1)
     return final_labels, means, covariances, priors
 
-# =============================================================================
-# Run cross entropy clustering on the embeddings
-# =============================================================================
-# (Here we use 'group_amt' as the number of clusters, but you can choose any number.)
-n_clusters = torch.unique(group_ids).size(0)
-labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
-
-print("Cluster labels for each node:", labels)
-
-
-
 def compute_best_accuracy(true_labels, pred_labels, n_clusters):
     """
     Given the ground truth labels and predicted labels, try all possible
@@ -210,6 +129,7 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
     """
     best_accuracy = 0.0
     best_perm = None
+    best_map = None
     # Iterate over all possible permutations of cluster indices (0,1,...,n_clusters-1)
     for perm in itertools.permutations(range(n_clusters)):
         # Create a copy of predicted labels mapped using the current permutation
@@ -221,17 +141,55 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
         if accuracy > best_accuracy:
             best_accuracy = accuracy
             best_perm = perm
-    return best_accuracy, best_perm
-
-# Convert group_ids (ground truth) to a numpy array
-true_labels = group_ids.cpu().numpy()
+            best_map  = mapped_pred
+    return best_accuracy, best_perm, best_map
 
 
+def getModel():
+    input_dim = 2
+    output_dim = 16
+    num_nodes = 400 
+    num_timesteps = 20 
+    hidden_dim = 64 
 
-# 'labels' are produced from cross entropy clustering
-accuracy, best_perm = compute_best_accuracy(true_labels, labels, 4)
 
-print("Best permutation mapping (predicted label -> true label):", best_perm)
-print("Best clustering accuracy: {:.4f}".format(int(accuracy)))
+    model = TemporalGCN(
+        input_dim=input_dim,
+        output_dim=output_dim,
+        num_nodes=num_nodes,
+        num_timesteps=num_timesteps,
+        hidden_dim=hidden_dim
+    ).to(device)
 
-plot_faster(positions, adjacency, embed=emb, ego_idx=ego_idx, ego_network_indices=ego_positions)
+
+    checkpoint_path = "best_model.pt"
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+
+    model.eval()
+    return model
+
+if __name__ == "__main__":
+    positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
+    model = getModel()
+    emb = model(positions[:, :, :2], edge_indices, ego_mask, eval=True)
+
+    emb_np = emb.cpu().detach().numpy().squeeze(0)
+    emb_np = emb_np[ego_mask.cpu()[-1]]
+    
+
+    group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
+    n_clusters = torch.unique(group_ids).size(0)
+
+    labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+
+    true_labels = group_ids.cpu().numpy()
+
+    accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 4)
+
+    # print("Best permutation mapping (predicted label -> true label):", best_perm)
+    print("Best clustering accuracy: {:.4f}".format(accuracy))
+    # embed=emb[0, ego_mask.cpu()[-1]],
+    # pred_groups=pred_groups
+    plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu())
+    input("Press Enter to continue...")
+

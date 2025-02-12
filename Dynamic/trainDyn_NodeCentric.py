@@ -301,7 +301,7 @@ def train_one_epoch(model, dataloader, optimizer, device, infonce_loss_fn):
     model.train()
     epoch_loss = 0.0
     print("Training epoch")
-    for batch_idx, sample_list in tqdm(enumerate(dataloader)):
+    for batch_idx, sample_list in enumerate(dataloader):
         # sample_list is a list of (positions, adjacency), 
         # one for each item in the batch. We'll accumulate the loss.
         # Then backprop once per batch.
@@ -377,6 +377,21 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
     epoch_loss = 0.0
     
     print("Validating")
+    for batch_idx, batch in enumerate(dataloader):
+        positions = batch['positions']
+        groups = positions[:, 0, :, 2]
+        ego_mask_batch = batch['ego_mask_batch']
+        big_batch_edges = batch['big_batch_edges']
+        big_batch_positions = batch['big_batch_positions']
+
+
+        emb = model(big_batch_positions, big_batch_edges, ego_mask_batch)
+        
+        loss = infonce_loss_fn(emb, groups)
+        epoch_loss += loss.item()
+
+    return epoch_loss / len(dataloader)
+    """
     for batch_idx, sample_list in tqdm(enumerate(dataloader)):
         batch_embeddings = []
         batch_groups = []
@@ -411,6 +426,7 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
         epoch_loss += loss.item()
     
     return epoch_loss / len(dataloader)
+    """
 
 
 def main():

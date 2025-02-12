@@ -169,27 +169,35 @@ def getModel():
     return model
 
 if __name__ == "__main__":
-    positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
-    model = getModel()
-    emb = model(positions[:, :, :2], edge_indices, ego_mask, eval=True)
-
-    emb_np = emb.cpu().detach().numpy().squeeze(0)
-    emb_np = emb_np[ego_mask.cpu()[-1]]
     
+    model = getModel()
 
-    group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
-    n_clusters = torch.unique(group_ids).size(0)
+    acc_all = []
+    for i in range(500):
+        positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
+        emb = model(positions[:, :, :2], edge_indices, ego_mask, eval=True)
 
-    labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+        emb_np = emb.cpu().detach().numpy().squeeze(0)
+        emb_np = emb_np[ego_mask.cpu()[-1]]
+        
 
-    true_labels = group_ids.cpu().numpy()
+        group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
+        n_clusters = torch.unique(group_ids).size(0)
 
-    accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 4)
+        labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
 
-    # print("Best permutation mapping (predicted label -> true label):", best_perm)
-    print("Best clustering accuracy: {:.4f}".format(accuracy))
-    # embed=emb[0, ego_mask.cpu()[-1]],
-    # pred_groups=pred_groups
-    plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu())
-    input("Press Enter to continue...")
+        true_labels = group_ids.cpu().numpy()
 
+        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 4)
+
+        # print("Best permutation mapping (predicted label -> true label):", best_perm)
+        print("Best clustering accuracy: {:.4f}".format(accuracy))
+        # embed=emb[0, ego_mask.cpu()[-1]],
+        # pred_groups=pred_groups
+        # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu())
+
+        acc_all.append(accuracy)
+
+    acc_avg = sum(acc_all) / len(acc_all)
+    print("ACC AVERAGE: ")
+    print(acc_avg)

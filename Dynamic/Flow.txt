@@ -1,0 +1,5 @@
+[Input]
+- Node features
+- Node edges
+- Ego Network Mask
+

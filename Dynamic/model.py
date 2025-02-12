@@ -24,24 +24,44 @@ class TemporalGCN(nn.Module):
         
 
     def forward(self, x, edge_indices, ego_mask, eval=False):
-        # x = [Time, ]
+        # x = [Time, Batch*Nodes, (x,y)]
+        # ego_mask = [Batch, Time, Nodes]
         
+        # [Batch, Time, Nodes] -> [Time, Batch*Nodes]
+        x_ego_mask = ego_mask.permute(1, 0, 2).reshape(20, -1) # Prepare ego_mask to mask x
+        # x_ego_mask = [Time, Batch*Nodes]
+        # print("Ego Mask Shape:{}".format(x_ego_mask.shape))
+        # print("x Shape:{}".format(x.shape))
+
         x_out = []
-        
+
+        # In eval mode?
         if eval:
             B = 1
         else:
             B = len(ego_mask)
+
+
         # print("B? : {}".format(B))
         # print("X_OUT shape0 : {}".format(x[0].shape))
         for t in range(self.num_timesteps):
             x_t = x[t]
             e_t = edge_indices[t]
+            ego_mask_t = x_ego_mask[t]
+            
+            x_t = x_t[ego_mask_t]
+            
+            print("x_t shape: {}".format(x_t.shape))
+            print("e_t shape: {}".format(e_t.shape))
+
+            exit()
+
             x_t = self.gcn1(x_t, e_t)
             x_t = torch.relu(x_t)
             x_t = self.gcn2(x_t, e_t)
             x_out.append(x_t)
 
+        
         x_out = torch.stack(x_out, dim=0)
         # print("X_OUT shape1 : {}".format(x_out.shape))
 
@@ -57,75 +77,6 @@ class TemporalGCN(nn.Module):
         x_out = self.fc(x_out)  
         
         return x_out
-        
-        #####
-        '''
-        # x = [batch, timesteps, node_amt, 2]
-        # ego_adjacency = [batch, timesteps, node_amt, node_amt]
-        # edge_indices = [batch, timestep, 2, node_amt]
-        batch_size, timesteps_amt, node_amt_max, _ = x.shape
-
-        x_out = []
-        for t in range(timesteps_amt):
-            x_t = x[:, t, :, :]
-            x_t = self.gcn1(x_t, edge_indices[t])
-            x_t = torch.relu(x_t)
-            x_t = self.gcn2(x_t, edge_indices[t])
-            x_out.append(x_t)
-
-        x_out = torch.stack(x_out, dim=1)  # [timesteps, batch, node_amt, hidden_dim]
-        print("XOUT:{}".format(x_out.shape))
-        
-        # Merge batch and node dimensions: new shape becomes [timesteps, batch * node_amt, hidden_dim]
-        x_out = x_out.view(timesteps_amt, batch_size * node_amt_max, -1)
-
-        _, (h_n, _) = self.lstm(x_out)  
-        x_out = h_n[-1]  # Get last layer's hidden state -> [batch, node_amt * hidden_dim]
-
-        x_out = x_out.view(batch_size, node_amt_max, -1) # [batch, node_amt * hidden_dim] -> [batch_size, num_nodes, output_dim]
-        x_out = self.fc(x_out)  
-        return x_out
-        '''
-
-
-
-
-        ##########################
-        """
-        batch_size = x.size(0)
-        num_nodes_Dyn = x.size(1)
-
-        # Reshape for processing: [batch_size * num_nodes, num_timesteps, input_dim]
-        x = x.view(-1, self.num_timesteps, x.size(-1))
-        
-        # Apply GCN layers with time-dependent adjacency matrices
-        x_out = []
-        for t in range(self.num_timesteps):
-            x_t = x[:, t, :]  # Features at timestep t
-            
-            # Use time-specific adjacency matrix
-            edge_index_t = edge_indices[t]  # [2, num_edges_t]
-            
-            x_t = self.gcn1(x_t, edge_index_t)
-            x_t = torch.relu(x_t)
-            x_t = self.gcn2(x_t, edge_index_t)
-            x_out.append(x_t)
-        
-        # Combine temporal features: [batch_size * num_nodes, num_timesteps, hidden_dim]
-        x_out = torch.stack(x_out, dim=1)
-        
-        # Apply LSTM: [batch_size * num_nodes, num_timesteps, hidden_dim] -> [batch_size * num_nodes, hidden_dim]
-        _, (h_n, _) = self.lstm(x_out)
-        x_out = h_n[-1]
-        
-        # Reshape back to [batch_size, num_nodes, hidden_dim]
-        x_out = x_out.view(batch_size, num_nodes_Dyn, -1)
-        
-        # Final output layer
-        x_out = self.fc(x_out)  # [batch_size, num_nodes, output_dim]
-        
-        return x_out
-        """
 
 if __name__ == '__main__':
     # Number of nodes, timesteps, and features
@@ -162,10 +113,10 @@ if __name__ == '__main__':
         ego_mask_batch = batch['ego_mask_batch']
         big_batch_edges = batch['big_batch_edges']
         big_batch_positions = batch['big_batch_positions']
+        big_batch_ego_edges = batch['big_batch_ego_edges']
 
         groups = positions[:, 0, :, 2]
-        print("Groups shape: {}".format(groups.shape))
 
-        emb = model(big_batch_positions, big_batch_edges, ego_mask_batch)
+        emb = model(big_batch_positions, big_batch_ego_edges, ego_mask_batch)
 
         break

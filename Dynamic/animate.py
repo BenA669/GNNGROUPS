@@ -6,7 +6,7 @@ from sklearn.cluster import SpectralClustering
 from itertools import permutations
 
 def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None, 
-                ego_idx=None, ego_network_indices=None, pred_groups=None, save_path="animation.gif"):
+                ego_idx=None, ego_network_indices=None, pred_groups=None, ego_mask=None, save_path="animation.gif"):
     """
     Animate the dynamic graph. If embedding is provided, a t-SNE plot is saved.
     If ego information is provided (ego_idx and ego_network_indices), nodes (and edges)
@@ -32,7 +32,7 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
                                                  affinity='nearest_neighbors', 
                                                  n_neighbors=2, random_state=42)
         predicted_labels = torch.from_numpy(
-            spectral_clustering.fit_predict(embed.detach().cpu().numpy()[0])
+            spectral_clustering.fit_predict(embed)
         ).to(device=device)
         if ego_idx is not None:
             actual_labels = ego_network_indices[0, :, 2].long().to(device)
@@ -42,41 +42,47 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
 
         unique_pred = torch.unique(predicted_labels).tolist()
 
-        if len(unique_actual) == len(unique_pred):
-            best_accuracy = 0.0
-            best_perm_map = None
+        # if len(unique_actual) == len(unique_pred):
+        #     best_accuracy = 0.0
+        #     best_perm_map = None
 
-            for perm in permutations(unique_pred):
-                perm_map = {}
-                for i, pred_id in enumerate(perm):
-                    perm_map[pred_id] = unique_actual[i]
+        #     for perm in permutations(unique_pred):
+        #         perm_map = {}
+        #         for i, pred_id in enumerate(perm):
+        #             perm_map[pred_id] = unique_actual[i]
 
-                mapped = torch.tensor([perm_map[int(lbl.item())] for lbl in predicted_labels],
-                                      device=device)
-                correct = (mapped == actual_labels).sum().item()
-                total = actual_labels.shape[0]
-                accuracy = correct / total
+        #         mapped = torch.tensor([perm_map[int(lbl.item())] for lbl in predicted_labels],
+        #                               device=device)
+        #         correct = (mapped == actual_labels).sum().item()
+        #         total = actual_labels.shape[0]
+        #         accuracy = correct / total
 
-                if accuracy > best_accuracy:
-                    best_accuracy = accuracy
-                    best_perm_map = perm_map
+        #         if accuracy > best_accuracy:
+        #             best_accuracy = accuracy
+        #             best_perm_map = perm_map
             
-            if best_perm_map is not None:
-                best_mapped_labels = torch.tensor([best_perm_map[int(lbl.item())]
-                                                   for lbl in predicted_labels],
-                                                  device=device)
-                print(f"Accuracy found = {best_accuracy:.3f}")
-        else:
-            print("Warning: Number of unique actual labels != number of predicted clusters. "
-                  "Skipping label permutation matching.")
-            best_mapped_labels = predicted_labels
+        #     if best_perm_map is not None:
+        #         best_mapped_labels = torch.tensor([best_perm_map[int(lbl.item())]
+        #                                            for lbl in predicted_labels],
+        #                                           device=device)
+        #         print(f"Accuracy found = {best_accuracy:.3f}")
+        # else:
+        #     print("Warning: Number of unique actual labels != number of predicted clusters. "
+        #           "Skipping label permutation matching.")
+            # best_mapped_labels = predicted_labels
 
-        tsneEmbed = TSNE(perplexity=5).fit_transform(embed.cpu().detach().numpy()[0])
+        tsneEmbed = TSNE(perplexity=5).fit_transform(embed)
+
         figEmbed = plt.figure(figsize=(10, 10)) 
         plt.title("Model Output Embeddings Visualized")
+        print(len(tsneEmbed))
+        print(ego_mask[-1].shape)
+        ego_net_in_better = all_positions_cpu[-1, ego_mask[-1].cpu()]
+        print(ego_net_in_better.shape)
+        # exit()
         if ego_idx is not None:
-            for node in range(ego_network_indices.size(dim=1)):
-                group = int(ego_network_indices[0, node, 2].item())
+            for node in range(len(tsneEmbed)):
+                group = int(ego_net_in_better[node, 2].item())
                 plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
                             c=colors[group % len(colors)], alpha=0.8)
         else:

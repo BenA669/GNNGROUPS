@@ -9,3 +9,5 @@ pregenerated_graphs_validation.pt
 pyvenv.cfg
 *.pt
 *.pth
+*.mp4
+Dynamic/media

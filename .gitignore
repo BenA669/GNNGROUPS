@@ -11,3 +11,4 @@ pyvenv.cfg
 *.pth
 *.mp4
 Dynamic/media
+Dynamic/SplitVid

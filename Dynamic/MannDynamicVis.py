@@ -144,6 +144,32 @@ def makeSurroundingBigMatrix(matrixList):
         bigBoxes.append(SurroundingRectangle(matrix))
     return bigBoxes
 
+def lstmpass(lstfilledList, lstmoutputlist, lstoutputanimation):
+    animationList = []
+    bigBoxFilled = makeSurroundingBigMatrix(lstfilledList)
+
+    for idx, box in enumerate(bigBoxFilled):
+        animationIter = []
+
+        if idx == 0:
+            animationIter.append(Create(box))
+            animationList.append(animationIter)
+            continue
+
+        animationIter.append(ReplacementTransform(bigBoxFilled[idx-1], box))
+        animationList.append(animationIter)
+
+    animationIter = []
+    animationIter.append(lstoutputanimation[0])
+    animationList.append(animationIter)
+
+    animationIter = []
+    animationIter.append(Uncreate(bigBoxFilled[-1]))
+    animationList.append(animationIter)
+
+    return animationList
+    
+
 def gcnPass(featMatrixList, adjMatrixList, gcnMatrixAnimation, gcnMatrixGroup):
     animationList = []
     bigBoxFeat = makeSurroundingBigMatrix(featMatrixList)
@@ -353,6 +379,8 @@ def gcnToPad(gcnMatrixList, paddedMatrixList, egoIndexList):
     #                     ent.set_color(GREEN)
     #                 else:
     #                     ent.set_color(RED)
+    lengs = [len(matList.get_rows()) for matList in gcnMatrixList]
+    maxLeng = max(lengs)
 
     animationList = []
     animationIteration = []
@@ -361,48 +389,76 @@ def gcnToPad(gcnMatrixList, paddedMatrixList, egoIndexList):
     # Get Group GCN
     # Get group Padded
     for idxMat, mat in enumerate(gcnMatrixList):
-        GCNStack = Group()
-        PaddedStack = Group()
+        GCNStack = []
+        PaddedStack = []
         gcnmatRows = mat.get_rows()
         for idxRow, row in enumerate(gcnmatRows):
-            targetIndex = int(egoIndexList[idxMat, idxRow].get_tex_string())
-            GCNStack.add(gcnmatRows)
-            PaddedStack.add(paddedMatrixList[idxMat, targetIndex])
+            targetIndex = int(egoIndexList[idxMat].get_entries()[idxRow].get_tex_string())
+            GCNStack.append(Group(row))
+            PaddedStack.append(Group(paddedMatrixList[idxMat].get_rows()[targetIndex]))
         GCNStacks.append(GCNStack)
         PaddedStacks.append(PaddedStack)
 
+    runtime = 0.2
+    stickerGCN = Group()
+    def replaceGroupBwA(GroupA, GroupB, animationIter):
+        # animationIter.append(Wait(1))   
+        GroupAcopy = GroupA.copy()     
+        animationIter.append(FadeOut(GroupB, run_time=runtime))
+        animationIter.append(GroupA.animate(run_time=runtime+0.1).move_to(GroupB.get_center()))
+        animationIter.append(FadeIn(GroupAcopy,run_time=0))
+        return GroupAcopy
 
-    for idxNode in range(len(GCNboxesList)):
+    matDone = [False for i in range(len(gcnMatrixList))]
+    
+    nextIterAdd = []
+    
+    for idxNode in range(maxLeng+1):
+        delayAdd = []
         for idxMat, mat in enumerate(zip(GCNboxesList, PaddedboxesList, EGOboxesList)):
+            if matDone[idxMat]:
+                continue
+
             GCNList = mat[0]
             PaddedList = mat[1]
             EGOList = mat[2]
-            egoMaskIndex = int(egoIndexList[idxMat, idxNode].get_tex_string())            
-    
+
+            # egoMaskIndex = int(egoIndexList[idxMat, idxNode].get_tex_string())                        
+
+            if idxNode == lengs[idxMat]:
+                animationIteration.append(Uncreate(GCNList[idxNode-1], run_time=runtime))
+                animationIteration.append(Uncreate(EGOList[idxNode-1], run_time=runtime))
+                matDone[idxMat] = True  
+                continue
+
             if idxNode == 0:
-                animationIteration.append(Create(GCNList[idxNode]))
+                animationIteration.append(Create(EGOList[idxNode], run_time=runtime))
+                animationIteration.append(Create(GCNList[idxNode], run_time=runtime))
                 # animationIteration.append(Create(PaddedList[idxNode]))
-                animationIteration.append(Create(EGOList[idxNode]))
-                animationIteration.append(ReplacementTransform(GCNStacks[idxMat, ]))
+                
+                
+                # animationIteration.append(Transform(PaddedStacks[idxMat][idxNode], GCNStacks[idxMat][idxNode].copy()))
 
                 # animationIteration.append(Create(PaddedList[egoMaskIndex]))
             else:
-                animationIteration.append(ReplacementTransform(GCNList[idxNode-1], GCNList[idxNode]))
+                animationIteration.append(ReplacementTransform(EGOList[idxNode-1], EGOList[idxNode], run_time=runtime))
+                animationIteration.append(ReplacementTransform(GCNList[idxNode-1], GCNList[idxNode], run_time=runtime))
                 # animationIteration.append(ReplacementTransform(PaddedList[idxNode-1], PaddedList[idxNode]))
-                animationIteration.append(ReplacementTransform(EGOList[idxNode-1], EGOList[idxNode]))
+            sticker = replaceGroupBwA(GCNStacks[idxMat][idxNode], PaddedStacks[idxMat][idxNode], delayAdd)
+            stickerGCN.add(sticker)
+                # animationIteration.append(Transform(PaddedStacks[idxMat][idxNode], GCNStacks[idxMat][idxNode].copy()))
             
             
-            
-            
-            animationList.append(animationIteration)
-            animationIteration = []
+        animationIteration.extend(delayAdd)
+        animationList.append(animationIteration)
+        animationIteration = []
 
-    animationIteration.append(Uncreate(GCNList[-1]))
-    animationIteration.append(Uncreate(PaddedList[-1]))
-    animationIteration.append(Uncreate(EGOList[-1]))
-    animationList.append(animationIteration)
+    # animationIteration.append(Uncreate(GCNList[-1]))
+    # animationIteration.append(Uncreate(PaddedList[-1]))
+    # animationIteration.append(Uncreate(EGOList[-1]))
+    # animationList.append(animationIteration)
 
-    return animationList
+    return animationList, stickerGCN
     
     
 
@@ -417,6 +473,7 @@ class Big(MovingCameraScene):
         timestamps = 3
         node_features = 2
         hidden_dim = 7
+        output_dim = 8
 
         ego_random_idx = 1
 
@@ -426,6 +483,10 @@ class Big(MovingCameraScene):
 
         # Shape = (T, Num Nodes, Num Nodes)
         all_adj_matrix = np.random.choice([True, False], size=(timestamps, num_nodes, num_nodes))
+
+        # tweak for *aesthetics*
+        all_adj_matrix[2][1][-1] = False
+
         # Force symmetry along the diagonal:
         all_adj_matrix = np.triu(all_adj_matrix) | np.triu(all_adj_matrix).transpose(0, 2, 1)
         # Set the diagonal of each matrix to True:
@@ -442,6 +503,11 @@ class Big(MovingCameraScene):
                 t_mat.append([ent])
             ego_mask_I_T.append(t_mat)
 
+        union_mask = np.any(ego_mask, axis=0)
+        union_mask_expanded = np.expand_dims(union_mask, axis=0)
+        # Reshape to mimic the transposed structure of ego_mask_T.
+        # Here we use shape (1, num_nodes, 1) since we collapsed the T dimension.
+        egomask_union_T = np.where(union_mask.reshape(1, num_nodes, 1), "T", "F")
 
         # Shape = (T, X, 2)
         masked_node_features = [subMat[ego_mask[idMat]] for idMat, subMat in enumerate(all_node_features)]
@@ -452,6 +518,11 @@ class Big(MovingCameraScene):
         # LSTM Padded = (T, Num Nodes, Hidden Dim)
         lstm_padded = np.zeros(shape=(timestamps, num_nodes, hidden_dim))
 
+        lstm_output = np.round(np.random.rand(1, num_nodes, output_dim)*100, decimals=2)
+
+        lstm_output_filtered = lstm_output[:, union_mask, :]
+        
+
         featMatrixList, featMatrixGroup, featMatrixAnimation = displayAllMatrix(all_node_features)
         adjMatrixList, adjMatrixGroup, adjMatrixAnimation = displayAllMatrix(all_adj_matrix)
         egoMatrixList, egoMatrixGroup, egoMatrixAnimation = displayAllMatrix(ego_mask)
@@ -461,6 +532,9 @@ class Big(MovingCameraScene):
         maskedFeatMatrixList, maskedFeatMatrixGroup, maskedFeatMatrixAnimation = displayAllMatrix(masked_node_features)
         maskedAdjMatrixList, maskedAdjMatrixGroup, maskedAdjMatrixAnimation = displayAllMatrix(masked_adj_matrix)
         PaddedMatrixList, PaddedMatrixGroup, PaddedMatrixAnimation = displayAllMatrix(lstm_padded)
+        lstmOutMatrixList, lstmOutMatrixGroup, lstmOutMatrixAnimation = displayAllMatrix(lstm_output)
+        egoUnionMatrixList, egoUnionMatrixGroup, egoUnionMatrixAnimation = displayAllMatrix(egomask_union_T)
+        lstmoutputFilteredMatrixList, lstmoutputFilteredMatrixGroup, lstmoutputFilteredMatrixAnimation = displayAllMatrix(lstm_output_filtered)
         
         firstFeatMatrix = featMatrixList[0]
         t1FeatTitle = titleObj("Feature Matrix", firstFeatMatrix)
@@ -487,6 +561,7 @@ class Big(MovingCameraScene):
         colorListofMatrices(adjMatrixList, all_adj_matrix) # Color adjMatrix
         colorListofMatrices(egoMatrixList, ego_mask) # Color egoMatrix
         colorListofMatrices(T_egoMatrixList, ego_mask)
+        colorListofMatrices(egoUnionMatrixList, union_mask_expanded)
         colorListofMatrices(maskedAdjMatrixList, ego_mask, wtf=True) 
 
         # t1 sample proccessing
@@ -622,8 +697,16 @@ class Big(MovingCameraScene):
         # Shape(T, X, Hidden Dim)
         gcn_output = [np.round(np.random.rand(node_amt, hidden_dim)*100, decimals=2) for node_amt in nodeAmtList]
 
+        # Prepare LSTM padded filled
+        # LSTM Padded filled
+        lstm_padded_filled = []
+        for idMat, mat in enumerate(lstm_padded):
+            mat[ego_mask_I[idMat]] = gcn_output[idMat]
+            lstm_padded_filled.append(mat)
+            
         # Prepare GCN Output Matrices
         gcnMatrixList, gcnMatrixGroup, gcnMatrixAnimation = displayAllMatrix(gcn_output)
+        lstmfillMatrixList, lstmfillMatrixGroup, lstmfillgcnMatrixAnimation = displayAllMatrix(lstm_padded_filled)
         gcnMatrixGroup.next_to(GCNPassTitle, DOWN)
         
         # Brace Hidden Dim
@@ -641,7 +724,7 @@ class Big(MovingCameraScene):
 
         # GCN YAP
         GCNyap = Group()
-        GCNyap.add(gcnEmbedBrace)
+        # GCNyap.add(gcnEmbedBrace)
         GCNyap.add(hiddenDimBrace)
         GCNyap.add(nodeAmtX)
         self.play(AnimationGroup(FadeIn(GCNyap), FadeIn(Group(*GCNcol_indices), shift=UP), lag_ratio=0.1))
@@ -752,6 +835,122 @@ class Big(MovingCameraScene):
         FadeIn(Group(*Paddedrow_indices), shift=LEFT)
 
         # Yap over
+        zippedcentersaved = zippedGroupGCNI_EGO_T.get_center()
+
+        # Apply padding time
+        gcnToPadAnimationList, stickerGCN = gcnToPad(zippedGCNMatrixList, PaddedMatrixList, zippedT_I_egoMatrixList)
+        for animationIteration in gcnToPadAnimationList:
+            self.play(AnimationGroup(*animationIteration, lag_ratio=0.2))
+
+        # Replace padded with filled
+        # lstmfillMatrixList, lstmfillMatrixGroup, lstmfillgcnMatrixAnimation
+        lstmfillMatrixGroup.move_to(PaddedMatrixGroup.get_center())
+        lstmfillEnt = Group()
+        movedGCNembed = Group()
+        rowCounter = 0
+        for idxMat, mat in enumerate(lstmfillMatrixList):
+            for idxRow, row in enumerate(mat.get_rows()):
+                lstmfillEnt.add(row)
+                # print(ego_mask[idxMat][idxRow])
+                if (ego_mask[idxMat][idxRow]):
+                    movedGCNembed.add(zippedGCNMatrixList[idxMat].get_rows()[rowCounter])
+                    rowCounter += 1
+                else:
+                    movedGCNembed.add(PaddedMatrixList[idxMat].get_rows()[idxRow])
+            # print(rowCounter)
+            rowCounter = 0
+
+        bracketshelp = Group()
+        for mat in PaddedMatrixList:
+            bracketshelp.add(mat.get_brackets())
+        
+        backetswhatthe = Group()
+        for mat in lstmfillMatrixList:
+            backetswhatthe.add(mat.get_brackets())
+
+        self.play(ReplacementTransform(movedGCNembed, lstmfillEnt, run_time=0.1), ReplacementTransform(bracketshelp, backetswhatthe, run_time=0.1))
+
+        # Fade out GCN stuff
+        thingsToFadeOut = Group()
+        for mat in zippedT_I_egoMatrixList:
+            thingsToFadeOut.add(mat)
+        for mat in zippedGCNMatrixList:
+            thingsToFadeOut.add(mat.get_brackets())
+        
 
 
+        self.play(FadeOut(GCNPassTitle), FadeOut(stickerGCN), FadeOut(thingsToFadeOut), FadeOut(paddedTitle),
+                  lstmfillMatrixGroup.animate.move_to(zippedcentersaved))
+        # paddedTitle.animate.next_to(zippedGroupGCNI_EGO_T, UP*1.5)
+        self.wait(1)
+
+        # Title lstm pass below lstm filled
+        # show new matrix (NodeAmt, output_dim) title lstm output
+        # Union mask all mask over timestep
+
+        # LSTM PAss
+        # lstmOutMatrixList, lstmOutMatrixGroup, lstmOutMatrixAnimation
+        lstmpassTitle = titleObj("LSTM Pass", lstmfillMatrixGroup, DOWN*1.5)
+        lstmOutputTitle = titleObj("LSTM Output", lstmfillMatrixGroup, DOWN*1.5)
+        lstmOutMatrixGroup.next_to(lstmpassTitle, DOWN)
+        # lstmOutputTitle.next_to(lstmOutMatrixGroup, DOWN)
+        
+        self.play(FadeIn(lstmpassTitle))
+
+        lstmanimation = lstmpass(lstmfillMatrixList, lstmOutMatrixList, lstmOutMatrixAnimation)
+        for animationiterlstm in lstmanimation:
+            self.play(AnimationGroup(*animationiterlstm, lag_ratio=0.1))
+
+        # self.play(FadeIn(lstmOutputTitle))
+
+        # MOVE AND CLEAN
+
+        self.play(FadeOut(lstmfillMatrixGroup),
+                  lstmOutMatrixGroup.animate.move_to(lstmfillMatrixGroup.get_center()),
+                  lstmpassTitle.animate.next_to(lstmfillMatrixGroup, UP))
+        
+
+        # Union ego mask
+        unionEgoMaskTitle = titleObj("Apply Union to Ego Mask",lstmOutMatrixGroup , DOWN*1.5)
+        filterLstmTitle = titleObj("Filter LSTM Output",lstmOutMatrixGroup , DOWN*1.5)
+        T_egoMatrixGroup.next_to(filterLstmTitle, DOWN)
+        unionEgoMaskTitle.next_to(T_egoMatrixGroup, DOWN)
+        egoUnionMatrixGroup.move_to(T_egoMatrixGroup.get_center())
+        
+        self.play(FadeIn(filterLstmTitle)) # Filter LSTM output title
+        self.play(AnimationGroup(*T_egoMatrixAnimation, lag_ratio=0.1)) # show transposed ego mask
+        self.play(FadeIn(unionEgoMaskTitle)) # Show title apply union to ego mask
+        self.play(ReplacementTransform(T_egoMatrixGroup, egoUnionMatrixGroup)) # Replacement transform to union ego mask
+        self.play(FadeOut(unionEgoMaskTitle)) # Take out apply title
+        self.play(egoUnionMatrixGroup.animate.next_to(lstmOutMatrixGroup, LEFT))
+        # Get transposed ego masks and put them in a line
+        # T_egoMatrixList, T_egoMatrixGroup, T_egoMatrixAnimation
+        # egoUnionMatrixList, egoUnionMatrixGroup, egoUnionMatrixAnimation
+
+        # Masking time
+        lstmFilteranimationList, lstmFilterbackgroundRect, lstmFiltermaskedEnt, lstmFilterunmaskedEntRet = maskMatrix(egoUnionMatrixList, lstmOutMatrixList, union_mask_expanded)
+
+        for animationIter in lstmFilteranimationList:
+            self.play(AnimationGroup(*animationIter, lag_ratio=0.1))
+
+        # Take out masked rows
+        # lstmoutputFilteredMatrixList, lstmoutputFilteredMatrixGroup, lstmoutputFilteredMatrixAnimation
+        self.play(FadeOut(lstmFiltermaskedEnt), FadeOut(egoUnionMatrixGroup), FadeOut(lstmpassTitle),
+                  FadeOut(filterLstmTitle), FadeOut(lstmFilterbackgroundRect))
+        
+        cleanedLstmOutMatrixList, cleanedLstmMatrixListEnt = CleanMatrixList(lstmOutMatrixList, union_mask_expanded, self)
+        
+        lstmoutputFilteredMatrixGroup.move_to(lstmOutMatrixGroup.get_center())
+
+        self.play(AnimationGroup(*moveBoxesList(cleanedLstmMatrixListEnt, lstmoutputFilteredMatrixList, copy=False), lag_ratio=0.1))
+        finaloutputtitle = titleObj("Final Output", lstmoutputFilteredMatrixGroup , UP)
+        nodeAmtBraceSeen = braceMatrix("Seen Node Amount", lstmoutputFilteredMatrixGroup, LEFT)
+        outputdimBrace = braceMatrix("Output Dimension", lstmoutputFilteredMatrixGroup, DOWN)
+        yapObjFinalOutput = Group()
+        yapObjFinalOutput.add(nodeAmtBraceSeen)
+        yapObjFinalOutput.add(outputdimBrace)
+        yapObjFinalOutput.add(finaloutputtitle)
+        self.play(FadeIn(yapObjFinalOutput))
+        
+        
         self.wait(5)

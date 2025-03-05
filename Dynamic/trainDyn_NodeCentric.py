@@ -89,7 +89,187 @@ def adjacency_to_edge_index(adj_t: torch.Tensor):
 #         'big_batch_positions': big_batch_positions,
 #     }
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 class InfoNCELoss(nn.Module):
+    def __init__(self, temperature=0.07):
+        """
+        Args:
+            temperature (float): Temperature scaling factor.
+        """
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, embeddings, groups, mask):
+        """
+        Args:
+            embeddings (Tensor): Tensor of shape [B, N, emb_dim].
+            mask (Tensor): Binary mask of shape [B, N] where 1 indicates a valid token.
+            groups (Tensor): Tensor of shape [B, N] with group labels.
+        
+        Returns:
+            loss (Tensor): Scalar tensor representing the InfoNCE loss.
+        """
+        B, N, emb_dim = embeddings.shape
+        groups = groups.to(embeddings.device)
+        mask = mask.to(embeddings.device)
+        
+        # print(f"embed: {embeddings.get_device()}")
+        # print(f"groups: {groups.get_device()}")
+        # print(f"mask: {mask.get_device()}")
+        # Normalize embeddings to unit length for cosine similarity
+        embeddings = F.normalize(embeddings, p=2, dim=-1)  # [B, N, emb_dim]
+        
+        # Compute similarity matrix [B, N, N] via dot product
+        sim_matrix = torch.matmul(embeddings, embeddings.transpose(1, 2))  # [B, N, N]
+        sim_matrix = sim_matrix / self.temperature  # scale similarities
+        
+        # Create a mask for valid tokens (expand for pairwise comparisons)
+        valid_mask = mask.bool()  # [B, N]
+        valid_mask_i = valid_mask.unsqueeze(2)  # [B, N, 1]
+        valid_mask_j = valid_mask.unsqueeze(1)  # [B, 1, N]
+        valid_pair_mask = valid_mask_i & valid_mask_j  # [B, N, N] valid pairs
+        
+        # Identify positive pairs: same group and not comparing the token with itself.
+        group_equal = (groups.unsqueeze(2) == groups.unsqueeze(1))  # [B, N, N]
+        diag_mask = torch.eye(N, dtype=torch.bool, device=embeddings.device).unsqueeze(0)  # [B, N, N]
+        positive_mask = group_equal & ~diag_mask  # exclude self comparisons
+        
+        # Only consider valid tokens in the positives as well
+        positive_mask = positive_mask & valid_pair_mask
+        
+        # Negatives: valid pairs that are not in the positive set
+        negative_mask = valid_pair_mask & (~positive_mask)
+        
+        # For each anchor, we want:
+        #   logit_denominator = logsumexp( sim(anchor, all valid tokens) )
+        #   logit_numerator   = logsumexp( sim(anchor, positive tokens) )
+        # We first mask out invalid comparisons by setting them to a very low value.
+        logits = sim_matrix.masked_fill(~valid_pair_mask, -1e9)
+        
+        # Compute denominator: over all valid comparisons per anchor.
+        denom = torch.logsumexp(logits, dim=-1)  # [B, N]
+        
+        # For the numerator, mask out all non-positive pairs.
+        pos_logits = logits.masked_fill(~positive_mask, -1e9)
+        num = torch.logsumexp(pos_logits, dim=-1)  # [B, N]
+        
+        # InfoNCE loss per valid token: -log(probability of positives)
+        loss_per_token = -(num - denom)  # [B, N]
+        
+        # Only average over tokens that have at least one positive candidate.
+        has_positive = positive_mask.any(dim=-1)  # [B, N]
+        loss = loss_per_token[has_positive]
+        if loss.numel() == 0:
+            # In case no valid positive pairs exist, return zero loss.
+            return torch.tensor(0.0, device=embeddings.device, requires_grad=True)
+        return loss.mean()
+
+
+class InfoNCELoss3(nn.Module):
+    def __init__(self, temperature=0.1):
+        super().__init__()
+        self.temperature = temperature
+        self.ce = nn.CrossEntropyLoss()
+
+    def forward(self, embeddings, groups, mask=None):
+        """
+        embeddings: either a tensor of shape [B, N, emb_dim] or a list of tensors [num_nodes, emb_dim]
+        groups: either a tensor of shape [B, N] or a list of tensors [num_nodes]
+        mask: a boolean tensor of shape [B, N] (if embeddings is a tensor) indicating the nodes that have been seen.
+              Only these nodes will be used for the contrastive loss.
+        """
+        # Flatten embeddings and groups.
+        if isinstance(embeddings, list):
+            flat_emb = torch.cat(embeddings, dim=0)  # [total_nodes, emb_dim]
+            flat_groups = torch.cat(groups, dim=0)     # [total_nodes]
+        else:
+            B, N, emb_dim = embeddings.shape
+            flat_emb = embeddings.view(B * N, emb_dim)
+            flat_groups = groups.reshape(B * N)
+            # If a mask is provided, assume it has shape [B, N] and flatten it.
+            if mask is not None:
+                mask = mask.view(B * N)
+
+        # Apply mask if provided: keep only the nodes that the model has seen.
+        if mask is not None:
+            flat_emb = flat_emb[mask]
+            flat_groups = flat_groups[mask]
+
+        device = flat_emb.device
+        total_nodes = flat_emb.shape[0]
+
+        # Build a dictionary mapping each group id to the list of indices in that group.
+        from collections import defaultdict
+        group_dict = defaultdict(list)
+        for idx in range(total_nodes):
+            g = flat_groups[idx].item()
+            group_dict[g].append(idx)
+
+        anchor_idx_list = []
+        pos_idx_list = []
+        neg_idx_list = []
+        # Global indices for negative sampling.
+        all_indices = torch.arange(total_nodes, device=device)
+
+        for g, idxs in group_dict.items():
+            idxs_tensor = torch.tensor(idxs, device=device)
+            # Skip groups with fewer than 2 members.
+            if idxs_tensor.size(0) < 2:
+                continue
+
+            # Shuffle indices and pair each with the next (cyclically) for positive pairs.
+            perm = idxs_tensor[torch.randperm(idxs_tensor.size(0))]
+            pos = torch.roll(perm, shifts=1, dims=0)
+
+            anchor_idx_list.append(perm)
+            pos_idx_list.append(pos)
+
+            # Sample one negative for each anchor from nodes outside the current group.
+            complement_mask = (flat_groups != g)
+            complement_indices = all_indices[complement_mask]
+            if complement_indices.numel() == 0:
+                continue
+
+            neg = complement_indices[
+                torch.randint(
+                    high=complement_indices.size(0),
+                    size=(idxs_tensor.size(0),),
+                    device=device
+                )
+            ]
+            neg_idx_list.append(neg)
+
+        # If no valid positive pairs were found, return a zero loss.
+        if len(anchor_idx_list) == 0:
+            return torch.tensor(0.0, device=device, requires_grad=True)
+
+        # Concatenate all anchor, positive, and negative indices.
+        anchor_idx = torch.cat(anchor_idx_list, dim=0)
+        pos_idx    = torch.cat(pos_idx_list,    dim=0)
+        neg_idx    = torch.cat(neg_idx_list,    dim=0)
+
+        # Gather the corresponding embeddings.
+        anchor_emb = flat_emb[anchor_idx]   # [K, emb_dim]
+        pos_emb    = flat_emb[pos_idx]       # [K, emb_dim]
+        neg_emb    = flat_emb[neg_idx]       # [K, emb_dim]
+
+        # Compute the dot products (similarity scores) scaled by the temperature.
+        pos_score = torch.sum(anchor_emb * pos_emb, dim=1) / self.temperature  # [K]
+        neg_score = torch.sum(anchor_emb * neg_emb, dim=1) / self.temperature  # [K]
+
+        # Stack the scores and compute cross-entropy loss.
+        logits = torch.stack([pos_score, neg_score], dim=1)  # [K, 2]
+        labels = torch.zeros(logits.size(0), dtype=torch.long, device=device)
+
+        loss = self.ce(logits, labels)
+        return loss
+
+
+
+class InfoNCELoss2(nn.Module):
     def __init__(self, temperature=0.1):
         super().__init__()
         self.temperature = temperature
@@ -192,22 +372,20 @@ def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn
     for batch_idx, batch in enumerate(dataloader):
         positions = batch['positions']
         groups = positions[:, 0, :, 2]
-        ego_mask_batch = batch['ego_mask_batch']
+        ego_mask_batch = batch['ego_mask_batch'] # Shape: (Batch, Timestep, Node Amt)
+        ego_mask = ego_mask_batch.any(dim=1)  # shape: [B, N]
         big_batch_edges = batch['big_batch_edges']
         big_batch_positions = batch['big_batch_positions']
         big_batch_adjacency = batch['big_batch_adjacency']
 
+
         emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
         
-        print("LOSSING")
-        loss = infonce_loss_fn(emb, groups)
-        print("LOSS DONE")
+        # loss = infonce_loss_fn(emb, groups)
+        loss = infonce_loss_fn(emb, groups, mask=ego_mask)
         optimizer.zero_grad()
-        print("OPTIMIZER DONE")
         loss.backward()
-        print("ACK DON")
         optimizer.step()
-        print("guh")
         epoch_loss += loss.item()
 
     return epoch_loss / len(dataloader)
@@ -224,6 +402,7 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
         positions = batch['positions']
         groups = positions[:, 0, :, 2]
         ego_mask_batch = batch['ego_mask_batch']
+        ego_mask = ego_mask_batch.any(dim=1)  # shape: [B, N]
         big_batch_edges = batch['big_batch_edges']
         big_batch_positions = batch['big_batch_positions']
         big_batch_adjacency = batch['big_batch_adjacency']
@@ -231,7 +410,7 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
 
         emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
         
-        loss = infonce_loss_fn(emb, groups)
+        loss = infonce_loss_fn(emb, groups, ego_mask)
         epoch_loss += loss.item()
 
     return epoch_loss / len(dataloader)

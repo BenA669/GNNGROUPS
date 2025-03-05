@@ -32,6 +32,7 @@ class TemporalGCN(nn.Module):
     def __init__(self, input_dim, output_dim, num_nodes, num_timesteps, hidden_dim=64):
         super(TemporalGCN, self).__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"IS CUDA AVALAIBLE: {torch.cuda.is_available()}")
         self.num_nodes = num_nodes
         self.num_timesteps = num_timesteps
         self.hidden_dim = hidden_dim
@@ -72,8 +73,9 @@ class TemporalGCN(nn.Module):
             a_t = a_t[ego_mask_t][:, ego_mask_t]    # Mask adjacency
 
             # Pre Pad:
-            # x_t[~ego_mask_t] = -5000                   # Mask features
-            # a_t[~ego_mask_t][:, ~ego_mask_t] = False    # Mask adjacency
+            # x_t = x_t.masked_fill(~ego_mask_t.unsqueeze(1).to(self.device), -5000)     # Mask features
+            # mask = ~ego_mask_t.unsqueeze(1) & ~ego_mask_t.unsqueeze(0)  # Create a mask for adjacency
+            # a_t = a_t.masked_fill(mask.to(self.device), False)
 
             e_t = tensor_to_edge_index(a_t)         # Convert adjacency matrix to edge index (2, Y)
             

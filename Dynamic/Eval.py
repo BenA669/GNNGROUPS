@@ -6,6 +6,7 @@ import numpy as np
 import itertools
 from animate import plot_faster
 from tqdm import tqdm
+import hdbscan
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -114,6 +115,14 @@ def cross_entropy_clustering(embeddings, n_clusters, n_iters=100):
     final_labels = responsibilities.argmax(axis=1)
     return final_labels, means, covariances, priors
 
+def hbdscan_cluster(embeddings, min_cluster_size=2, min_samples=2):
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples = min_samples, gen_min_span_tree=True)
+    cluster_labels = clusterer.fit_predict(embeddings)
+    print(cluster_labels)
+    # exit()
+    return cluster_labels
+
+
 def compute_best_accuracy(true_labels, pred_labels, n_clusters):
     """
     Given the ground truth labels and predicted labels, try all possible
@@ -187,7 +196,9 @@ if __name__ == "__main__":
         group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
         n_clusters = torch.unique(group_ids).size(0)
 
-        labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+        # labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+
+        labels = hbdscan_cluster(emb_np)
 
         true_labels = group_ids.cpu().numpy()
 
@@ -206,4 +217,6 @@ if __name__ == "__main__":
     print("ACC AVERAGE: ")
     print(acc_avg)
 
-# Acc no padd 0.6707840826842364
+# Acc no padd 0.76
+# Acc w padd bad :(
+

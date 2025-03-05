@@ -197,11 +197,13 @@ if __name__ == "__main__":
         print("Best clustering accuracy: {:.4f}".format(accuracy))
         # embed=emb[0, ego_mask.cpu()[-1]],
         # pred_groups=pred_groups
-        plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu(), embed=emb_np, ego_mask=ego_mask)
-        input("Press Enter to continue...")
+        # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu(), embed=emb_np, ego_mask=ego_mask)
+        # input("Press Enter to continue...")
         
         acc_all.append(accuracy)
 
     acc_avg = sum(acc_all) / len(acc_all)
     print("ACC AVERAGE: ")
     print(acc_avg)
+
+# Acc no padd 0.6707840826842364

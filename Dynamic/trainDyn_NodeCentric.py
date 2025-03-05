@@ -197,8 +197,9 @@ def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn
         big_batch_positions = batch['big_batch_positions']
         big_batch_adjacency = batch['big_batch_adjacency']
 
-
+        print("GOING THROUGH FWRD PASS")
         emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
+        print("DONE")
         
         loss = infonce_loss_fn(emb, groups)
         optimizer.zero_grad()

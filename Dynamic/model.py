@@ -48,16 +48,6 @@ class TemporalGCN(nn.Module):
         
 
     def forward(self, x, big_batch_adjacency, ego_mask, eval=False):
-        # x = [Time, Batch*Nodes, (x,y)]
-        # ego_mask = [Batch, Time, Nodes]
-        
-        
-        
-        # x_ego_mask = [Time, Batch*Nodes]
-        # print("Ego Mask Shape:{}".format(x_ego_mask.shape))
-        # print("x Shape:{}".format(x.shape))
-        # print("big_batch_adjacency shape: {}".format(big_batch_adjacency.shape))
-
         x_out = []
 
         # In eval mode?
@@ -72,32 +62,32 @@ class TemporalGCN(nn.Module):
             max_nodes = ego_mask.size(dim=2)
 
         x_placeholder = torch.zeros(self.num_timesteps, max_nodes*B, self.hidden_dim).to(self.device)
-        # print("X_placeholder shape: {}".format(x_placeholder.shape))
         for t in range(self.num_timesteps):
             x_t = x[t]                      # Get features at timestamp t
             a_t = big_batch_adjacency[t]    # Get adjacency at timestamp t
             ego_mask_t = x_ego_mask[t]      # Get ego mask at timestamp t
             
+            # Post Pad:
             x_t = x_t[ego_mask_t]                   # Mask features
             a_t = a_t[ego_mask_t][:, ego_mask_t]    # Mask adjacency
+
+            # Pre Pad:
+            # x_t[~ego_mask_t] = -5000                   # Mask features
+            # a_t[~ego_mask_t][:, ~ego_mask_t] = False    # Mask adjacency
+
             e_t = tensor_to_edge_index(a_t)         # Convert adjacency matrix to edge index (2, Y)
             
             x_t = self.gcn1(x_t, e_t)               # Pass masked features and adjacency
             x_t = torch.relu(x_t)
             x_t = self.gcn2(x_t, e_t)
 
-            
+            # Post Pad
             ego_idx = torch.nonzero(ego_mask_t).flatten().to(self.device)
             x_placeholder[t, ego_idx] = x_t         # Insert embeddings into their corresponding place in the global matrix (Padding)
 
-        
-        # x_out = torch.stack(x_out, dim=0)
-        # print("X_OUT shape1 : {}".format(x_out.shape))
+            # Pre Pad
+            # x_placeholder[t] = x_t
 
-        
-        # mask = (~ego_mask.transpose(0, 1).reshape(20, -1, 1)).float().to(self.device)
-        # Zero out the masked positions:
-        # x_out_masked = x_placeholder * mask
         _, (h_n, _) = self.lstm(x_placeholder)
         x_out = h_n[-1]  # Get last layer's hidden state -> [batch, node_amt * hidden_dim]
 

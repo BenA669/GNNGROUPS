@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import torch
 import matplotlib.animation as animation
-from sklearn.manifold import TSNE
+# from sklearn.manifold import TSNE
 from sklearn.cluster import SpectralClustering
 from itertools import permutations
 
@@ -71,27 +71,27 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
         #           "Skipping label permutation matching.")
             # best_mapped_labels = predicted_labels
 
-        tsneEmbed = TSNE(perplexity=5).fit_transform(embed)
+        # tsneEmbed = TSNE(perplexity=5).fit_transform(embed)
 
-        figEmbed = plt.figure(figsize=(10, 10)) 
-        plt.title("Model Output Embeddings Visualized")
-        print(len(tsneEmbed))
-        print(ego_mask[-1].shape)
-        ego_net_in_better = all_positions_cpu[-1, ego_mask[-1].cpu()]
-        print(ego_net_in_better.shape)
-        # exit()
-        if ego_idx is not None:
-            for node in range(len(tsneEmbed)):
-                group = int(ego_net_in_better[node, 2].item())
-                plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
-                            c=colors[group % len(colors)], alpha=0.8)
-        else:
-            for node in range(all_positions_cpu.size(dim=1)):
-                group = int(all_positions_cpu[0, node, 2].item())
-                plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
-                            c=colors[group % len(colors)], alpha=0.8)
-        plt.savefig("tsne_embeddings.png")
-        plt.close()
+        # figEmbed = plt.figure(figsize=(10, 10)) 
+        # plt.title("Model Output Embeddings Visualized")
+        # print(len(tsneEmbed))
+        # print(ego_mask[-1].shape)
+        # ego_net_in_better = all_positions_cpu[-1, ego_mask[-1].cpu()]
+        # print(ego_net_in_better.shape)
+        # # exit()
+        # if ego_idx is not None:
+        #     for node in range(len(tsneEmbed)):
+        #         group = int(ego_net_in_better[node, 2].item())
+        #         plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
+        #                     c=colors[group % len(colors)], alpha=0.8)
+        # else:
+        #     for node in range(all_positions_cpu.size(dim=1)):
+        #         group = int(all_positions_cpu[0, node, 2].item())
+        #         plt.scatter(tsneEmbed[node, 0], tsneEmbed[node, 1], 
+        #                     c=colors[group % len(colors)], alpha=0.8)
+        # plt.savefig("tsne_embeddings.png")
+        # plt.close()
 
     time_steps, node_amt, _ = all_positions_cpu.shape
 

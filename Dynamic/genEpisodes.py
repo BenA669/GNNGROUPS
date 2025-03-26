@@ -4,9 +4,9 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
     
-    time_steps = 20
-    group_amt = 4
-    node_amt = 400
+    time_steps = 10
+    group_amt = 3
+    node_amt = 200
     distance_threshold = 2
     intra_prob = 0.05
     inter_prob = 0.001
@@ -38,10 +38,10 @@ if __name__ == "__main__":
             persistence=0.5,
             lacunarity=2.0
         )
-        ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(positions, adjacency)
+        ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(positions, adjacency, hop=2)
         test_data.append((positions, adjacency, edge_indices, ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask))
 
-    torch.save(test_data, "test_data_Ego.pt")
+    torch.save(test_data, "test_data_Ego_2hop.pt")
 
     # Generate validation data
     for _ in tqdm(range(NUM_SAMPLES_VAL)):
@@ -60,11 +60,11 @@ if __name__ == "__main__":
             persistence=0.5,
             lacunarity=2.0
         )
-        ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(positions, adjacency)
+        ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(positions, adjacency, hop=2)
         val_data.append((positions, adjacency, edge_indices, ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask))
 
     # Save datasets to file
     
-    torch.save(val_data, "val_data_Ego.pt")
+    torch.save(val_data, "val_data_Ego_2hop.pt")
 
     print("Finished generating and saving test_data.pt and val_data.pt")

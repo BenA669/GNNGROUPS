@@ -186,21 +186,29 @@ if __name__ == "__main__":
     for i in tqdm(range(500)):
         positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
         emb = model(positions[:, :, :2], adjacency, ego_mask, eval=True)
-        print(emb.shape)
+        # print(emb.shape)
         
         emb_np = emb.cpu().detach().numpy().squeeze(0)
         
-        emb_np = emb_np[ego_mask.cpu()[-1]]
-
-
-        group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
+        # emb_np = emb_np[ego_mask.cpu()[-1]]
+        emb_np = emb_np[ego_mask.any(dim=0).cpu()]
+        # print(f"ego: {ego_mask.shape}")
+        # print(f"union ego: {ego_mask.any(dim=0)}")
+        # print(f"shape: {ego_mask.any(dim=0).shape}")
+        # group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
+        # print(f"position shape: {positions.shape}")
+        group_ids = positions[-1, ego_mask.any(dim=0).cpu(), 2].long()
         n_clusters = torch.unique(group_ids).size(0)
+        if n_clusters == 1:
+            continue
+        print(f"# CLUSTERS: {n_clusters}")
+        labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
 
-        # labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
-
-        labels = hbdscan_cluster(emb_np)
+        # labels = hbdscan_cluster(emb_np)
 
         true_labels = group_ids.cpu().numpy()
+        print(f"true labels: {true_labels}")
+        print(f"gussed labels: {labels}")
 
         accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 4)
 
@@ -212,6 +220,9 @@ if __name__ == "__main__":
         # input("Press Enter to continue...")
         
         acc_all.append(accuracy)
+        acc_avg = sum(acc_all) / len(acc_all)
+        print("ACC AVERAGE: ")
+        print(acc_avg)
 
     acc_avg = sum(acc_all) / len(acc_all)
     print("ACC AVERAGE: ")

@@ -3,6 +3,8 @@ import torch.nn as nn
 from GraphDataset import GCNDataset, collate_fn
 from torch_geometric.nn import GCNConv
 from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
+
 
 def tensor_to_edge_index(adj):
     """
@@ -47,7 +49,6 @@ class TemporalGCN(nn.Module):
         # Fully connected output layer
         self.fc = nn.Linear(hidden_dim, output_dim)
         
-
     def forward(self, x, big_batch_adjacency, ego_mask, eval=False):
         x_out = []
 
@@ -73,7 +74,8 @@ class TemporalGCN(nn.Module):
             a_t = a_t[ego_mask_t][:, ego_mask_t]    # Mask adjacency
 
             # Pre Pad:
-            # x_t = x_t.masked_fill(~ego_mask_t.unsqueeze(1).to(self.device), -5000)     # Mask features
+            # x_t = x_t.masked_fill(~x_ego_mask.any(dim=0).unsqueeze(1).to(self.device), -5000)     # Mask features
+            
             # mask = ~ego_mask_t.unsqueeze(1) & ~ego_mask_t.unsqueeze(0)  # Create a mask for adjacency
             # a_t = a_t.masked_fill(mask.to(self.device), False)
 
@@ -90,13 +92,40 @@ class TemporalGCN(nn.Module):
             # Pre Pad
             # x_placeholder[t] = x_t
 
-        _, (h_n, _) = self.lstm(x_placeholder)
-        x_out = h_n[-1]  # Get last layer's hidden state -> [batch, node_amt * hidden_dim]
+        # _, (h_n, _) = self.lstm(x_placeholder)
+        # x_out = h_n[-1]  # Get last layer's hidden state -> [batch, node_amt * hidden_dim]
 
         
-        x_out = x_out.view(B, 400, -1) # [batch, node_amt * hidden_dim] -> [batch_size, num_nodes, output_dim]
+        # x_out = x_out.view(B, 400, -1) # [batch, node_amt * hidden_dim] -> [batch_size, num_nodes, output_dim]
         
-        x_out = self.fc(x_out)  
+        # x_out = self.fc(x_out)  
+
+        # Compute sequence lengths for each node (each column in x_placeholder is a node's time series)
+        if eval:
+            # In eval mode, assume all nodes are present at every timestep.
+            lengths = torch.full((B * max_nodes,), self.num_timesteps, dtype=torch.long, device=self.device)
+        else:
+            # For each node in the flattened batch, count valid timesteps.
+            # x_ego_mask has shape [num_timesteps, B * max_nodes]; summing over time gives the lengths.
+            lengths = x_ego_mask.sum(dim=0)
+
+        lengths = torch.clamp(lengths, min=1)
+
+        # Pack the padded sequence (note: lengths must be on CPU)
+        packed_input = pack_padded_sequence(x_placeholder, lengths.cpu(), enforce_sorted=False)
+
+        # Pass the packed sequence to the LSTM.
+        # The LSTM will only process the valid (non-padded) timesteps for each node.
+        packed_output, (h_n, _) = self.lstm(packed_input)
+        
+        # h_n[-1] gives the hidden state of the last LSTM layer for each node.
+        x_out = h_n[-1]  # Shape: [B * max_nodes, hidden_dim]
+
+        # Reshape the output to [B, max_nodes, hidden_dim]
+        x_out = x_out.view(B, max_nodes, -1)
+        
+        # Optionally, apply a fully connected layer.
+        x_out = self.fc(x_out)
         return x_out
 
 if __name__ == '__main__':

@@ -136,7 +136,7 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
                     # Adjust edge opacity based on ego network membership if provided.
                     if ego_network_set is not None:
                         if (i in ego_network_set) and (j in ego_network_set):
-                            edge_alpha = 0.6
+                            edge_alpha = 0.25
                         else:
                             edge_alpha = 0.1
                     else:
@@ -214,5 +214,5 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
         ax.legend()
 
     ani = animation.FuncAnimation(fig, update, frames=time_steps, interval=50, repeat=True)
-    ani.save(save_path, writer=animation.PillowWriter(fps=20))
+    ani.save(save_path, writer=animation.PillowWriter(fps=10))
     print(f"Animation saved as {save_path}")

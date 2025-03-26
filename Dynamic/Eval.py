@@ -7,6 +7,10 @@ import itertools
 from animate import plot_faster
 from tqdm import tqdm
 import hdbscan
+from umap import UMAP
+
+
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -122,6 +126,30 @@ def hbdscan_cluster(embeddings, min_cluster_size=2, min_samples=2):
     # exit()
     return cluster_labels
 
+def umap_hdbscan_cluster(embeddings, n_components=2, min_cluster_size=5, min_samples=5):
+    """
+    First reduce the dimensionality of the embeddings using UMAP, then apply HDBSCAN clustering.
+
+    Args:
+        embeddings (np.ndarray): High-dimensional data array of shape (n_samples, n_features).
+        n_components (int): Number of dimensions for the UMAP embedding (typically 2 or 3).
+        min_cluster_size (int): The minimum size of clusters for HDBSCAN.
+        min_samples (int): The number of samples in a neighborhood for a point to be considered a core point in HDBSCAN.
+    
+    Returns:
+        cluster_labels (np.ndarray): Cluster labels from HDBSCAN. Noise points are labeled as -1.
+        embedding_umap (np.ndarray): The low-dimensional embedding of the data.
+    """
+    # Reduce dimensionality with UMAP
+    reducer = UMAP(n_components=n_components, random_state=42)
+    embedding_umap = reducer.fit_transform(embeddings)
+    
+    # Apply HDBSCAN clustering on the UMAP-reduced embeddings
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples)
+    cluster_labels = clusterer.fit_predict(embedding_umap)
+    
+    return cluster_labels, embedding_umap
+
 
 def compute_best_accuracy(true_labels, pred_labels, n_clusters):
     """
@@ -202,9 +230,12 @@ if __name__ == "__main__":
         if n_clusters == 1:
             continue
         print(f"# CLUSTERS: {n_clusters}")
-        labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+
+        # labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
 
         # labels = hbdscan_cluster(emb_np)
+        labels, embedding_umap = umap_hdbscan_cluster(emb_np, n_components=2, min_cluster_size=2, min_samples=2)
+
 
         true_labels = group_ids.cpu().numpy()
         print(f"true labels: {true_labels}")

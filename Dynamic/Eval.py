@@ -158,8 +158,8 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
 def getModel():
     input_dim = 2
     output_dim = 16
-    num_nodes = 400 
-    num_timesteps = 20 
+    num_nodes = 200 
+    num_timesteps = 10 
     hidden_dim = 64 
 
 

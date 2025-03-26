@@ -60,9 +60,8 @@ class TemporalGCN(nn.Module):
         else:
             B = len(ego_mask)
             # [Batch, Time, Nodes] -> [Time, Batch*Nodes]
-            x_ego_mask = ego_mask.permute(1, 0, 2).reshape(20, -1) # Prepare ego_mask to mask x
+            x_ego_mask = ego_mask.permute(1, 0, 2).reshape(self.num_timesteps, -1) # Prepare ego_mask to mask x
             max_nodes = ego_mask.size(dim=2)
-
         x_placeholder = torch.zeros(self.num_timesteps, max_nodes*B, self.hidden_dim).to(self.device)
         for t in range(self.num_timesteps):
             x_t = x[t]                      # Get features at timestamp t

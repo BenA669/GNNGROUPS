@@ -425,7 +425,7 @@ def main():
     parser.add_argument('--val_path', type=str, default='val_data_Ego_2hop.pt',
                         help="Path to your validation dataset .pt file.")
     parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--hidden_dim', type=int, default=64)
     parser.add_argument('--temp', type=float, default=0.1, 
@@ -488,7 +488,7 @@ def main():
         # You can implement a simple early-stopping or model checkpointing:
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), "best_model_prepad.pt")
+            torch.save(model.state_dict(), "best_model.pt")
             print("  [*] Model saved.")
     
     print("Training completed. Best val loss:", best_val_loss)

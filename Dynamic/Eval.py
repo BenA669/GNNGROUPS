@@ -11,9 +11,9 @@ import hdbscan
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def getData():
-    time_steps = 20
-    group_amt = 4
-    node_amt = 400
+    time_steps = 10
+    group_amt = 3
+    node_amt = 200
     distance_threshold = 2
     intra_prob = 0.05
     inter_prob = 0.001

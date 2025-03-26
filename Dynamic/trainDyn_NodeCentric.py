@@ -420,9 +420,9 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--train_path', type=str, default='test_data_Ego.pt',
+    parser.add_argument('--train_path', type=str, default='test_data_Ego_2hop.pt',
                         help="Path to your training dataset .pt file.")
-    parser.add_argument('--val_path', type=str, default='val_data_Ego.pt',
+    parser.add_argument('--val_path', type=str, default='val_data_Ego_2hop.pt',
                         help="Path to your validation dataset .pt file.")
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--epochs', type=int, default=5)
@@ -448,9 +448,9 @@ def main():
                             collate_fn=collate_fn)
     
     # We know from genEpisodes.py: 
-    node_amt=400
-    group_amt=4
-    time_steps=20
+    node_amt=200
+    group_amt=3
+    time_steps=10
     input_dim=2
     # But you might want to be more flexible by *inspecting* one sample from the dataset.
     # sample_positions, _ = train_dataset[0][0]['positions']

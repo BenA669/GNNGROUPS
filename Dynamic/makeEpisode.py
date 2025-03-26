@@ -184,7 +184,9 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=1):
     """
     Select an ego node whose dynamic network (up to `hop` hops) spans at least `min_groups`
     distinct groups, and then return an ego network that prunes connections among nodes that are
-    exclusively in the outermost (max hop) layer.
+    exclusively in the outermost (max hop) layer. Also returns an EgoMask which is a boolean
+    tensor (time_steps, total_nodes) indicating for each time step which nodes (of the original
+    total nodes) are part of the ego network (i.e. have a direct dynamic connection to the ego).
 
     Parameters:
         all_positions_cpu (torch.Tensor): Tensor of shape (time_steps, node_amt, 3)
@@ -203,9 +205,12 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=1):
             of shape (time_steps, n_ego_nodes, n_ego_nodes). For N-hop networks, edges connecting
             two nodes that are both exclusively in the outermost layer (distance == hop) are pruned.
         ego_edge_indices (list): List of edge indices for each time step of the ego network.
-        reachable (torch.Tensor): Boolean mask (total_nodes,) indicating nodes in the ego network.
+        EgoMask (torch.Tensor): Boolean mask (time_steps, total_nodes) indicating for each time
+            step which nodes (in the full graph) are in the ego network based on dynamic connectivity.
     """
-    # print("getting ego")
+    import random
+    import torch
+
     time_steps, total_nodes, _ = all_positions_cpu.shape
 
     # Build a static union graph over time (True if an edge ever exists).
@@ -250,7 +255,7 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=1):
     
     ego_idx = chosen_idx
     distances = get_hop_network_and_distances(ego_idx, hop)
-    reachable = distances >= 0
+    reachable = distances >= 0  # static mask for nodes in the ego network (union over time)
     neighbor_indices = torch.nonzero(reachable, as_tuple=False).flatten()
     ego_positions = all_positions_cpu[:, neighbor_indices, :]
 
@@ -275,8 +280,17 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=1):
     
     ego_adjacency = torch.stack(ego_adj_list, dim=0)
 
-    # print("done")
-    return ego_idx, ego_positions, ego_adjacency, ego_edge_indices, reachable
+    # --- Compute EgoMask ---
+    # For each timestamp, mark nodes directly connected to the ego based on the dynamic adjacency.
+    # We force the ego node itself to be included.
+    EgoMask = (adjacency_dynamic_cpu[:, ego_idx, :] > 0)
+    EgoMask[:, ego_idx] = True
+    # Restrict the mask only to nodes that are in the BFS-based union (ego network).
+    reachable_mask = reachable.unsqueeze(0)  # shape: (1, total_nodes)
+    EgoMask = EgoMask & reachable_mask
+
+    return ego_idx, ego_positions, ego_adjacency, ego_edge_indices, EgoMask
+
 
 
 
@@ -313,7 +327,12 @@ if __name__ == '__main__':
 
     ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2)
 
+    print(ego_positions.shape)
+    print(ego_adjacency.shape)
+    print(EgoMask)
+    print(EgoMask.shape)
+
     # print(ego_adjacency.shape)
     print("GUH")
     
-    plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_network_indices=ego_positions)
+    # plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_network_indices=ego_positions)

@@ -53,6 +53,7 @@ class TemporalGCN(nn.Module):
         x = batch['big_batch_positions']
         big_batch_adjacency = batch['big_batched_adjacency_pruned']
 
+
         x_out = []
 
         # In eval mode?
@@ -67,7 +68,7 @@ class TemporalGCN(nn.Module):
             max_nodes = ego_mask.size(dim=2)
 
         x_placeholder = torch.zeros(self.num_timesteps, max_nodes*B, self.hidden_dim).to(self.device)
-        
+
         for t in range(self.num_timesteps):
             x_t = x[t]                      # Get features at timestamp t
             a_t = big_batch_adjacency[t]    # Get adjacency at timestamp t

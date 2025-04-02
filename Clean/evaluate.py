@@ -186,7 +186,7 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
 
 def getModel():
     input_dim = 2
-    output_dim = 16
+    output_dim = 8
     num_nodes = 200 
     num_timesteps = 10 
     hidden_dim = 64 
@@ -211,13 +211,14 @@ if __name__ == "__main__":
     
     model = getModel()
 
-    dataset = GCNDataset('test_data_Ego_2hop.pt')
+    dataset = GCNDataset('val_data_Ego_2hop_small.pt')
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
 
 
     acc_all = []
+    accuracyHBD_all = []
     # for i in tqdm(range(500)):
     for batch_idx, batch in enumerate(dataloader):
         positions = batch['positions'][0] # batch, timestamp, node_amt, 3
@@ -251,17 +252,17 @@ if __name__ == "__main__":
             continue
         print(f"# CLUSTERS: {n_clusters}")
 
-        # labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+        labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
 
         # labels = hbdscan_cluster(emb_np)
-        labels, embedding_umap = umap_hdbscan_cluster(emb_np, n_components=2, min_cluster_size=2, min_samples=2)
+        labelsHBD, embedding_umap = umap_hdbscan_cluster(emb_np, n_components=2, min_cluster_size=2, min_samples=2)
 
 
         true_labels = group_ids.cpu().numpy()
-        print(f"true labels: {true_labels}")
-        print(f"gussed labels: {labels}")
+        # print(f"true labels: {true_labels}")
+        # print(f"gussed labels: {labels}")
 
-        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 4)
+        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 3)
 
         # print("Best permutation mapping (predicted label -> true label):", best_perm)
         print("Best clustering accuracy: {:.4f}".format(accuracy))
@@ -270,10 +271,22 @@ if __name__ == "__main__":
         # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu(), embed=emb_np, ego_mask=ego_mask)
         # input("Press Enter to continue...")
         
+        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, 3)
+
+        # print("Best permutation mapping (predicted label -> true label):", best_perm)
+        print("Best clustering accuracyHBD: {:.4f}".format(accuracyHBD))
+
+        accuracyHBD_all.append(accuracyHBD)
+        acc_avgHBD = sum(accuracyHBD_all) / len(accuracyHBD_all)
+        
+
         acc_all.append(accuracy)
         acc_avg = sum(acc_all) / len(acc_all)
         print("ACC AVERAGE: ")
         print(acc_avg)
+
+        print("ACCHBAD AVERAGE: ")
+        print(acc_avgHBD)
 
     acc_avg = sum(acc_all) / len(acc_all)
     print("ACC AVERAGE: ")

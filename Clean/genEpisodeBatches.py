@@ -11,7 +11,7 @@ if __name__ == "__main__":
     intra_prob = 0.05
     inter_prob = 0.001
 
-    NUM_SAMPLES = 50
+    NUM_SAMPLES = 200
     # NUM_SAMPLES_VAL = 500
 
     test_data = []
@@ -38,12 +38,12 @@ if __name__ == "__main__":
                 persistence=0.5,
                 lacunarity=2.0
             )
-            ego_index, pruned_adj, reachable = getEgo(positions, adjacency, hop=2, union=False)
+            ego_index, pruned_adj, reachable = getEgo(positions, adjacency, hop=3, union=False)
             data.append((positions, adjacency, edge_indices, ego_index, pruned_adj, reachable))
         if train:
-            torch.save(data, "test_data_Ego_2hop.pt")
+            torch.save(data, "test_data_Ego_3hop_small.pt")
         else:
-            torch.save(val_data, "val_data_Ego_2hop.pt")
+            torch.save(val_data, "val_data_Ego_3hop_small.pt")
     Gen(test_data, train=True)
 
     Gen(val_data, train=False)

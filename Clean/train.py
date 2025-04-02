@@ -1,12 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
-import numpy as np
+from torch.utils.data import DataLoader
 from model import TemporalGCN 
-from makeEpisode import getEgo
-from torch.nn.utils.rnn import pad_sequence
 from datasetEpisode import GCNDataset, collate_fn
 
 
@@ -239,7 +235,7 @@ def main():
     parser.add_argument('--val_path', type=str, default='val_data_Ego_2hop.pt',
                         help="Path to your validation dataset .pt file.")
     parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--hidden_dim', type=int, default=64)
     parser.add_argument('--temp', type=float, default=0.1, 
@@ -277,14 +273,14 @@ def main():
     # hidden_dim is adjustable
     model = TemporalGCN(
         input_dim=input_dim,
-        output_dim=16,  # this is your embedding dim
+        output_dim=8,  # this is your embedding dim
         num_nodes=node_amt,
         num_timesteps=time_steps,
-        hidden_dim=args.hidden_dim
+        hidden_dim=64
     ).to(device)
     
     # InfoNCE Loss
-    infonce_loss_fn = InfoNCELossOld(temperature=args.temp)
+    infonce_loss_fn = InfoNCELoss(temperature=args.temp)
     
     # Optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr)

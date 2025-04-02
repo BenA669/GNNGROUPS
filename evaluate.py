@@ -187,8 +187,8 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
 def getModel():
     input_dim = 2
     output_dim = 8
-    num_nodes = 200 
-    num_timesteps = 10 
+    num_nodes = 100 
+    num_timesteps = 100
     hidden_dim = 64 
 
 
@@ -212,7 +212,7 @@ if __name__ == "__main__":
     
     model = getModel()
 
-    dataset = GCNDataset('val_data_Ego_2hop.pt')
+    dataset = GCNDataset('val_long_8.pt')
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
@@ -265,7 +265,7 @@ if __name__ == "__main__":
         print(f"true labels:    {true_labels}")
         
 
-        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 3)
+        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 8)
 
         
 
@@ -274,7 +274,7 @@ if __name__ == "__main__":
         # embed=emb[0, ego_mask.cpu()[-1]],
         # ego_network_indices = torch.nonzero(ego_mask_batch, as_tuple=False).squeeze(dim=1)
         
-        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, 3)
+        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, 8)
         print(f"gussed labels:  {pred_groups}")
 
         # print("Best permutation mapping (predicted label -> true label):", best_perm)

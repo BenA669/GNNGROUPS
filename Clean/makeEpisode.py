@@ -179,7 +179,7 @@ def makeDatasetDynamicPerlin(
 
     return all_positions_cpu, adjacency_dynamic_cpu, edge_indices
 
-def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=1, union=True):
+def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=True):
     """
     Select an ego node whose dynamic network (up to `hop` hops) spans at least `min_groups`
     distinct groups, and then return an ego network that prunes connections among nodes that are

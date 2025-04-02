@@ -211,7 +211,7 @@ if __name__ == "__main__":
     
     model = getModel()
 
-    dataset = GCNDataset('val_data_Ego_2hop_small.pt')
+    dataset = GCNDataset('val_data_Ego_2hop.pt')
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)

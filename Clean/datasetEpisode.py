@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
+from makeEpisode import getEgo
 
 class GCNDataset(Dataset):
     def __init__(self, data_path):
@@ -10,8 +11,9 @@ class GCNDataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        (positions, adjacency, edge_indices, ego_index, pruned_adj, reachable) = self.data[idx]
+        (positions, adjacency, edge_indices, _, _, _) = self.data[idx]
         # Convert everything to tensors
+        ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False)
         return (positions, adjacency, edge_indices, ego_index, pruned_adj, reachable)
 
 def collate_fn(batch):

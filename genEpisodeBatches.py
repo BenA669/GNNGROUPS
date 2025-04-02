@@ -4,9 +4,9 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
     
-    time_steps = 10
-    group_amt = 3
-    node_amt = 200
+    time_steps = 100
+    group_amt = 8
+    node_amt = 100
     distance_threshold = 2
     intra_prob = 0.05
     inter_prob = 0.001
@@ -36,14 +36,15 @@ if __name__ == "__main__":
                 tilt_strength=tilt_strength,
                 octaves=1,
                 persistence=0.5,
-                lacunarity=2.0
+                lacunarity=2.0,
+                boundary=4
             )
-            ego_index, pruned_adj, reachable = getEgo(positions, adjacency, hop=2, union=False)
+            ego_index, pruned_adj, reachable = getEgo(positions, adjacency, hop=2, union=False, min_groups=4)
             data.append((positions, adjacency, edge_indices, ego_index, pruned_adj, reachable))
         if train:
-            torch.save(data, "test_data_Ego_1hop_small.pt")
+            torch.save(data, "train_long_8.pt")
         else:
-            torch.save(val_data, "val_data_Ego_1hop_small.pt")
+            torch.save(val_data, "val_long_8.pt")
     Gen(test_data, train=True)
 
     Gen(val_data, train=False)

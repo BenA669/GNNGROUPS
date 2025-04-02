@@ -18,7 +18,7 @@ class GCNDataset(Dataset):
 
 def collate_fn(batch):
     # Unzip the batch (each sample is a tuple)
-    positions, adjacency, edge_indices, ego_index, pruned_adj, reachable = zip(*batch)
+    positions, adjacency, edge_indices, ego_index_batch, pruned_adj, reachable = zip(*batch)
     B = len(edge_indices)
     T = len(edge_indices[0])    
 
@@ -82,6 +82,7 @@ def collate_fn(batch):
         'big_batch_positions': big_batch_positions,
         'big_batch_adjacency': big_batch_adjacency,
         'big_batched_adjacency_pruned': big_batched_adjacency_pruned,
+        'ego_index_batch': ego_index_batch,
     }
 
 if __name__ == '__main__':

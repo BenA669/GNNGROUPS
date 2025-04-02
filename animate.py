@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import torch
 import matplotlib.animation as animation
-# from sklearn.manifold import TSNE
+from matplotlib.collections import LineCollection
+import matplotlib.colors as mcolors
+import numpy as np
 from sklearn.cluster import SpectralClustering
 from itertools import permutations
 
@@ -23,66 +25,66 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
             - a 3D tensor (time_steps, n_ego, 3) of ego positions (from which indices will be recovered)
       save_path: Where to save the animated GIF.
     """
-    colors = ["blue", "orange", "green", "red", "purple", "brown"]
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    # colors = ["g","r", "c", "m", "k"]
+    colors = ["red", "green", "blue", "orange", "purple", "c"]
     time_steps, node_amt, _ = all_positions_cpu.shape
 
-    # Process the ego network information:
-    if ego_network_indices is not None:
-        # If ego_network_indices is a tensor and appears to be a 3D tensor (e.g. ego positions),
-        # then recover the original node indices by matching rows from time step 0.
-        if isinstance(ego_network_indices, torch.Tensor):
-            if ego_network_indices.ndim == 3:
-                candidate = ego_network_indices[0]  # shape: (n_ego, 3)
-                full = all_positions_cpu[0]          # shape: (node_amt, 3)
-                computed_indices = []
-                for row in candidate:
-                    # Check for exact equality across the 3 coordinates.
-                    match = (full == row).all(dim=1)
-                    indices = torch.nonzero(match, as_tuple=False).flatten().tolist()
-                    if indices:
-                        computed_indices.append(indices[0])
-                ego_network_indices = computed_indices
-            else:
-                ego_network_indices = ego_network_indices.tolist()
-        elif isinstance(ego_network_indices, list):
-            # In case it's a list of lists (which would be unhashable), try to convert inner lists to ints.
-            if len(ego_network_indices) > 0 and isinstance(ego_network_indices[0], list):
-                # You might need to adjust this depending on your data.
-                ego_network_indices = [int(x[0]) for x in ego_network_indices]
-        # Now create a set for fast membership testing.
-        ego_network_set = set(ego_network_indices)
-    else:
-        ego_network_set = None
+    # Compute min and max for X and Y to fix axis limits
+    positions_np = all_positions_cpu[:, :, :2].cpu().numpy()
+    x_min, y_min = positions_np.min(axis=(0, 1))
+    x_max, y_max = positions_np.max(axis=(0, 1))
+
+    # Add padding to make it look nicer
+    x_pad = (x_max - x_min) * 0.05
+    y_pad = (y_max - y_min) * 0.05
+
+    x_min -= x_pad
+    x_max += x_pad
+    y_min -= y_pad
+    y_max += y_pad
+
 
     fig, ax = plt.subplots()
 
     def update(t):
         ax.clear()
-        adj_t = adjacency_dynamic_cpu[t]  # (node_amt, node_amt)
 
-        # --- Plot edges ---
-        for i in range(node_amt):
-            for j in range(i + 1, node_amt):
-                if adj_t[i, j] == 1:
-                    # Adjust edge opacity based on ego network membership if provided.
-                    if ego_network_set is not None:
-                        if (i in ego_network_set) and (j in ego_network_set):
-                            edge_alpha = 0.25
-                        else:
-                            edge_alpha = 0.1
-                    else:
-                        edge_alpha = 0.2
-                    x_vals = [all_positions_cpu[t, i, 0].item(), all_positions_cpu[t, j, 0].item()]
-                    y_vals = [all_positions_cpu[t, i, 1].item(), all_positions_cpu[t, j, 1].item()]
-                    ax.plot(x_vals, y_vals, c="gray", alpha=edge_alpha, linewidth=0.5)
+        # --- Vectorized edge plotting ---
+        # Convert current adjacency matrix to a NumPy array
+        adj = adjacency_dynamic_cpu[t].cpu().numpy()
+        # Find indices of all edges (only upper triangle to avoid duplicates)
+        i_indices, j_indices = np.nonzero(np.triu(adj, k=1))
+        if len(i_indices) > 0:
+            # Get the positions for the current time step (only x and y)
+            pos_t = all_positions_cpu[t].cpu().numpy()  # shape: (node_amt, 3)
+            # Build segments: each segment is defined by two endpoints ([x, y] pairs)
+            segments = np.stack([pos_t[i_indices, :2], pos_t[j_indices, :2]], axis=1)  # shape: (n_edges, 2, 2)
+            # Set the opacity (alpha) for each edge
+            if ego_mask is not None:
+                # For the current time step, recover the ego network indices
+                ego_network_set = set(torch.nonzero(ego_mask[t], as_tuple=False).flatten().tolist())
+                ego_list = list(ego_network_set)
+                # Check which endpoints are in the ego network
+                i_in = np.isin(i_indices, ego_list)
+                j_in = np.isin(j_indices, ego_list)
+                # If both endpoints are in the ego network, use higher opacity
+                alphas = np.where(i_in & j_in, 0.25, 0.1)
+            else:
+                alphas = np.full(len(i_indices), 0.2)
+            # Build an array of RGBA colors for each edge; base color is gray.
+            base_color = np.array(mcolors.to_rgba("gray"))
+            colors_arr = np.tile(base_color, (len(i_indices), 1))
+            colors_arr[:, 3] = alphas  # Set the alpha channel for each edge
+            # Create and add the LineCollection to the axes
+            lc = LineCollection(segments, colors=colors_arr, linewidths=0.5)
+            ax.add_collection(lc)
 
         # --- Plot nodes ---
         group_ids = all_positions_cpu[t, :, 2].long()
         unique_groups = torch.unique(group_ids)
 
-        if ego_network_set is not None:
+        if ego_mask is not None:
+            ego_network_set = set(torch.nonzero(ego_mask[t], as_tuple=False).flatten().tolist())
             for g in unique_groups:
                 group_mask = (group_ids == g)
                 indices = torch.nonzero(group_mask, as_tuple=False).flatten().tolist()
@@ -102,7 +104,7 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
                         all_positions_cpu[t, indices_not_in_ego, 0],
                         all_positions_cpu[t, indices_not_in_ego, 1],
                         c=colors[int(g) % len(colors)],
-                        alpha=0.1,
+                        alpha=0.25,
                     )
         else:
             for g in unique_groups:
@@ -119,32 +121,35 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
         if ego_idx is not None and 0 <= ego_idx < node_amt:
             ego_x = all_positions_cpu[t, ego_idx, 0].item()
             ego_y = all_positions_cpu[t, ego_idx, 1].item()
-            ax.scatter(ego_x, ego_y, s=200, marker='*', c=colors[int(all_positions_cpu[t, ego_idx, 2].item()) % len(colors)], zorder=10, alpha=0.5)
+            ax.scatter(ego_x, ego_y, s=200, marker='*',
+                       c=colors[int(all_positions_cpu[t, ego_idx, 2].item()) % len(colors)],
+                       zorder=10, alpha=0.5)
             ax.text(ego_x, ego_y, "Anchor", fontsize=12, color='black', zorder=11,
                     verticalalignment='bottom', horizontalalignment='right')
             
-        # print(ego_network_indices)
-        # Show incorrect predictions
         if pred_groups is not None:
             i = 0
-            for node in ego_network_indices:
+            for node in torch.nonzero(ego_mask.any(dim=0), as_tuple=False):
                 group = int(all_positions_cpu[0, node, 2].item())
                 if pred_groups[i] != group:
                     ax.scatter(
-                    all_positions_cpu[t, node, 0],
-                    all_positions_cpu[t, node, 1],
-                    c='red',
-                    alpha=0.2,
-                    s=100
-                )
-                
+                        all_positions_cpu[t, node, 0],
+                        all_positions_cpu[t, node, 1],
+                        c='red',
+                        alpha=0.2,
+                        s=100
+                    )
                 i += 1
-
 
         ax.set_title(f"Time Step {t}")
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
-        ax.legend()
+        ax.legend(loc="upper right", fontsize=8, frameon=False)
+
+
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+
 
     ani = animation.FuncAnimation(fig, update, frames=time_steps, interval=50, repeat=True)
     ani.save(save_path, writer=animation.PillowWriter(fps=10))

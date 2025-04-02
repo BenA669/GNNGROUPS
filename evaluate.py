@@ -4,7 +4,7 @@ from makeEpisode import makeDatasetDynamicPerlin, getEgo
 from sklearn.cluster import KMeans
 import numpy as np
 import itertools
-# from animate import plot_faster
+from animate import plot_faster
 from tqdm import tqdm
 import hdbscan
 from umap import UMAP
@@ -201,7 +201,8 @@ def getModel():
     ).to(device)
 
 
-    checkpoint_path = "best_model.pt"
+    checkpoint_path = "good_best_model.pt"
+    # Good best model is 68 HBD acc and 71 CEC acc
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
     model.eval()
@@ -222,9 +223,11 @@ if __name__ == "__main__":
     # for i in tqdm(range(500)):
     for batch_idx, batch in enumerate(dataloader):
         positions = batch['positions'][0] # batch, timestamp, node_amt, 3
+        adjacency = batch['adjacency'][0]
         ego_mask_batch = batch['ego_mask_batch'][0]
         big_batch_positions = batch['big_batch_positions'][0]
         big_batch_adjacency = batch['big_batch_adjacency'][0]
+        ego_index_batch = batch['ego_index_batch'][0]
 
         groups = positions[-1, :, 2]
 
@@ -259,21 +262,23 @@ if __name__ == "__main__":
 
 
         true_labels = group_ids.cpu().numpy()
-        # print(f"true labels: {true_labels}")
-        # print(f"gussed labels: {labels}")
+        print(f"true labels:    {true_labels}")
+        
 
         accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 3)
 
-        # print("Best permutation mapping (predicted label -> true label):", best_perm)
-        print("Best clustering accuracy: {:.4f}".format(accuracy))
-        # embed=emb[0, ego_mask.cpu()[-1]],
-        # pred_groups=pred_groups
-        # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu(), embed=emb_np, ego_mask=ego_mask)
-        # input("Press Enter to continue...")
         
-        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, 3)
 
         # print("Best permutation mapping (predicted label -> true label):", best_perm)
+        
+        # embed=emb[0, ego_mask.cpu()[-1]],
+        # ego_network_indices = torch.nonzero(ego_mask_batch, as_tuple=False).squeeze(dim=1)
+        
+        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, 3)
+        print(f"gussed labels:  {pred_groups}")
+
+        # print("Best permutation mapping (predicted label -> true label):", best_perm)
+        print("Best clustering accuracy: {:.4f}".format(accuracy))
         print("Best clustering accuracyHBD: {:.4f}".format(accuracyHBD))
 
         accuracyHBD_all.append(accuracyHBD)
@@ -287,6 +292,10 @@ if __name__ == "__main__":
 
         print("ACCHBAD AVERAGE: ")
         print(acc_avgHBD)
+
+        plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_index_batch, pred_groups=pred_groups, ego_mask=ego_mask_batch)
+        input("Press Enter to continue...")
+        
 
     acc_avg = sum(acc_all) / len(acc_all)
     print("ACC AVERAGE: ")

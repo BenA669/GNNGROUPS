@@ -8,7 +8,8 @@ import itertools
 from tqdm import tqdm
 import hdbscan
 from umap import UMAP
-
+from datasetEpisode import GCNDataset, collate_fn
+from torch.utils.data import DataLoader
 
 
 
@@ -210,22 +211,41 @@ if __name__ == "__main__":
     
     model = getModel()
 
+    dataset = GCNDataset('test_data_Ego_2hop.pt')
+
+    # Create DataLoader
+    dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
+
+
     acc_all = []
-    for i in tqdm(range(500)):
-        positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
-        emb = model(positions[:, :, :2], adjacency, ego_mask, eval=True)
+    # for i in tqdm(range(500)):
+    for batch_idx, batch in enumerate(dataloader):
+        positions = batch['positions'][0] # batch, timestamp, node_amt, 3
+        ego_mask_batch = batch['ego_mask_batch'][0]
+        big_batch_positions = batch['big_batch_positions'][0]
+        big_batch_adjacency = batch['big_batch_adjacency'][0]
+
+        groups = positions[-1, :, 2]
+
+        # emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
+        emb = model(batch)
+        
+
+
+        # positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
+        # emb = model(positions[:, :, :2], adjacency, ego_mask, eval=True)
         # print(emb.shape)
         
         emb_np = emb.cpu().detach().numpy().squeeze(0)
         
         # emb_np = emb_np[ego_mask.cpu()[-1]]
-        emb_np = emb_np[ego_mask.any(dim=0).cpu()]
+        emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()]
         # print(f"ego: {ego_mask.shape}")
         # print(f"union ego: {ego_mask.any(dim=0)}")
         # print(f"shape: {ego_mask.any(dim=0).shape}")
         # group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
         # print(f"position shape: {positions.shape}")
-        group_ids = positions[-1, ego_mask.any(dim=0).cpu(), 2].long()
+        group_ids = positions[-1, ego_mask_batch.any(dim=0).cpu(), 2].long()
         n_clusters = torch.unique(group_ids).size(0)
         if n_clusters == 1:
             continue

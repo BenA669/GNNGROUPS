@@ -9,6 +9,7 @@ from makeEpisode import getEgo
 from torch.nn.utils.rnn import pad_sequence
 from datasetEpisode import GCNDataset, collate_fn
 
+
 def adjacency_to_edge_index(adj_t: torch.Tensor):
     # (node_i, node_j) for all 1-entries
     edge_index = adj_t.nonzero().t().contiguous()  # shape [2, E]
@@ -18,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class InfoNCELoss(nn.Module):
+class InfoNCELossOld(nn.Module):
     def __init__(self, temperature=0.07):
         """
         Args:
@@ -91,6 +92,95 @@ class InfoNCELoss(nn.Module):
             # In case no valid positive pairs exist, return zero loss.
             return torch.tensor(0.0, device=embeddings.device, requires_grad=True)
         return loss.mean()
+    
+
+class InfoNCELoss(nn.Module):
+    def __init__(self, temperature=0.1, reduction='mean'):
+        """
+        InfoNCE Loss for contrastive learning based on group labels.
+        
+        Args:
+            temperature (float): Temperature scaling factor.
+            reduction (str): Reduction mode. Currently only 'mean' is supported.
+        """
+        super(InfoNCELoss, self).__init__()
+        self.temperature = temperature
+        self.reduction = reduction
+
+    def forward(self, embeddings, groups, mask=None):
+        """
+        Compute the InfoNCE loss.
+
+        Args:
+            embeddings (torch.Tensor): Tensor of shape [B, N, D] where B is batch size,
+                N is number of nodes (or nodes in the ego network) and D is embedding dimension.
+            groups (torch.Tensor): Tensor of shape [B, N] containing group labels for each node.
+            mask (torch.Tensor, optional): Boolean tensor of shape [B, N] indicating which nodes
+                should be included in the loss computation. If None, all nodes are used.
+
+        Returns:
+            torch.Tensor: The computed InfoNCE loss (a scalar).
+        """
+        batch_loss = 0.0
+        total_anchors = 0
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+        
+        B = embeddings.size(0)
+        # Process each sample in the batch separately.
+        for b in range(B):
+            # Select embeddings and corresponding groups for this sample.
+            z = embeddings[b]   # shape: [N, D]
+            g = groups[b]       # shape: [N]
+            if mask is not None:
+                mask_b = mask[b]
+                z = z[mask_b]
+                g = g[mask_b]
+            
+            N = z.size(0)
+            if N < 2:
+                continue  # Skip if fewer than 2 nodes are available.
+            
+            # Normalize the embeddings so that cosine similarity equals dot product.
+            z = F.normalize(z, p=2, dim=1)
+            # Compute similarity matrix and scale by temperature.
+            sim = torch.matmul(z, z.t()) / self.temperature
+            # Remove self-similarity by setting diagonal to -inf (so exp(-inf)=0)
+            diag_mask = torch.eye(N, device=z.device).bool()
+            sim.masked_fill_(diag_mask, -float('inf'))
+            
+            # Create a binary mask for positives: nodes with the same group label (excluding self).
+            # Expand dims to compare every pair.
+            g = g.view(-1)
+            positive_mask = (g.unsqueeze(0) == g.unsqueeze(1))  # shape: [N, N]
+            positive_mask = positive_mask.fill_diagonal_(False)
+            
+            # Compute exponentials of the similarities.
+            exp_sim = torch.exp(sim)
+            # For each anchor, denominator sums over all other nodes.
+            denominator = exp_sim.sum(dim=1)  # shape: [N]
+            # Numerator: sum over positive nodes.
+            positive_mask = positive_mask.to(device)
+            # print(exp_sim.device)
+            # print(positive_mask.device)
+            
+            numerator = (exp_sim * positive_mask.float()).sum(dim=1)  # shape: [N]
+            
+            # Identify anchors that have at least one positive.
+            valid = numerator > 0
+            if valid.sum() == 0:
+                continue
+
+            # Compute the loss for valid anchors.
+            loss_b = -torch.log(numerator[valid] / denominator[valid])
+            batch_loss += loss_b.sum()
+            total_anchors += valid.sum()
+        
+        if total_anchors == 0:
+            return torch.tensor(0.0, device=embeddings.device)
+        
+        loss = batch_loss / total_anchors
+        return loss
 
 
 def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn):
@@ -134,7 +224,7 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
         # emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
         emb = model(batch)
         
-        loss = infonce_loss_fn(emb, groups, ego_mask)
+        loss = infonce_loss_fn(emb, groups, mask=ego_mask)
         epoch_loss += loss.item()
 
     return epoch_loss / len(dataloader)
@@ -194,7 +284,7 @@ def main():
     ).to(device)
     
     # InfoNCE Loss
-    infonce_loss_fn = InfoNCELoss(temperature=args.temp)
+    infonce_loss_fn = InfoNCELossOld(temperature=args.temp)
     
     # Optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr)

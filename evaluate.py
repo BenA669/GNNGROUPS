@@ -1,256 +1,297 @@
-import torch
-import warnings
-from model import GCN, ClusterPredictor
-from makeDataset import makeDataSetCUDA, plot_dataset
-import statistics
+from model import TemporalGCN
+from torch import torch
+from makeEpisode import makeDatasetDynamicPerlin, getEgo
+from sklearn.cluster import KMeans
+import numpy as np
+import itertools
+# from animate import plot_faster
 from tqdm import tqdm
-import argparse
-import torch.nn.functional as F
-from sklearn.cluster import SpectralClustering, DBSCAN
-from itertools import permutations
-from scipy.optimize import linear_sum_assignment
 import hdbscan
-import warnings
+from umap import UMAP
+from datasetEpisode import GCNDataset, collate_fn
+from torch.utils.data import DataLoader
 
-# Ignore warnings about unconnected graphs in Spectral Clustering
-warnings.filterwarnings("ignore", category=UserWarning, message=".*Graph is not fully connected.*")
 
-# 96.3447 Acc after 10,000 iterations
 
-def generate_swapped_sequences(original_sequence):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Step 1: Identify the distinct numbers in the original sequence
-    distinct_elements, _ = torch.unique(original_sequence, sorted=False, return_inverse=True)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def getData():
+    time_steps = 10
+    group_amt = 3
+    node_amt = 200
+    distance_threshold = 2
+    intra_prob = 0.05
+    inter_prob = 0.001
+
+    NUM_SAMPLES_TEST = 100
+    NUM_SAMPLES_VAL = 100
+
+    test_data = []
+    val_data = []
+
+    noise_scale = 0.05      # frequency of the noise
+    noise_strength = 2      # influence of the noise gradient
+    tilt_strength = 0.25     # constant bias per group
+
+    positions, adjacency, edge_indices = makeDatasetDynamicPerlin(
+        node_amt=node_amt,
+        group_amt=group_amt,
+        std_dev=1,
+        time_steps=time_steps,
+        distance_threshold=2,
+        intra_prob=0.05,
+        inter_prob=0.001,
+        noise_scale=noise_scale,
+        noise_strength=noise_strength,
+        tilt_strength=tilt_strength,
+        octaves=1,
+        persistence=0.5,
+        lacunarity=2.0
+    )
+    ego_idx, ego_positions, ego_adjacency, ego_edge_indices, ego_mask = getEgo(positions, adjacency)
+    return positions.to(device), adjacency.to(device), edge_indices, ego_idx, ego_mask.to(device), ego_positions.to(device)
+
+def cross_entropy_clustering(embeddings, n_clusters, n_iters=100):
+    """
+    Cluster the data using an EM algorithm on a Gaussian mixture model,
+    which effectively minimizes a cross entropy between the data and the
+    cluster distributions.
     
-    # Step 2: Generate all permutations of the distinct elements
-    distinct_permutations = torch.tensor(list(permutations(distinct_elements.tolist())))
+    Args:
+        embeddings (np.ndarray): Array of shape (n_samples, n_features).
+        n_clusters (int): The desired number of clusters.
+        n_iters (int): Number of EM iterations.
     
-    # Step 3: For each permutation, replace elements in the original list
-    swapped_sequences = []
-    for perm in distinct_permutations:
-        mapping = dict(zip(distinct_elements.tolist(), perm.tolist()))
-        swapped_sequence = torch.tensor([mapping[element.item()] for element in original_sequence], device=device)
-        swapped_sequences.append(swapped_sequence)
+    Returns:
+        final_labels (np.ndarray): Cluster label for each sample.
+        means (np.ndarray): Final cluster means.
+        covariances (np.ndarray): Final cluster covariance matrices.
+        priors (np.ndarray): Final cluster priors.
+    """
+    n_samples, n_features = embeddings.shape
+
+    # ---------------------------
+    # Initialization via KMeans
+    # ---------------------------
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42).fit(embeddings)
+    labels = kmeans.labels_
+    means = kmeans.cluster_centers_
+    covariances = np.zeros((n_clusters, n_features, n_features))
+    priors = np.zeros(n_clusters)
+    for k in range(n_clusters):
+        cluster_data = embeddings[labels == k]
+        # Use np.cov with rowvar=False. Add a small regularization term to avoid singular matrices.
+        covariances[k] = np.cov(cluster_data, rowvar=False) + 1e-6 * np.eye(n_features)
+        priors[k] = cluster_data.shape[0] / n_samples
+
+    # ---------------------------
+    # EM iterations
+    # ---------------------------
+    for i in range(n_iters):
+        # E-step: compute responsibilities
+        responsibilities = np.zeros((n_samples, n_clusters))
+        for k in range(n_clusters):
+            diff = embeddings - means[k]
+            inv_cov = np.linalg.inv(covariances[k])
+            det_cov = np.linalg.det(covariances[k])
+            # Compute the Gaussian probability density for cluster k:
+            exponent = -0.5 * np.sum((diff @ inv_cov) * diff, axis=1)
+            coef = priors[k] / np.sqrt(((2 * np.pi) ** n_features) * det_cov)
+            responsibilities[:, k] = coef * np.exp(exponent)
+        # Normalize so that each row sums to 1
+        responsibilities /= responsibilities.sum(axis=1, keepdims=True)
+
+        # M-step: update parameters using the soft assignments
+        for k in range(n_clusters):
+            Nk = responsibilities[:, k].sum()
+            if Nk > 0:
+                means[k] = (responsibilities[:, k][:, None] * embeddings).sum(axis=0) / Nk
+                diff = embeddings - means[k]
+                # Compute covariance: weighted outer products summed over samples
+                covariances[k] = (
+                    responsibilities[:, k][:, None, None]
+                    * np.einsum("ni,nj->nij", diff, diff)
+                ).sum(axis=0) / Nk
+                # Regularize covariance to avoid numerical issues
+                covariances[k] += 1e-6 * np.eye(n_features)
+                priors[k] = Nk / n_samples
+
+    # Final assignment: choose the cluster with maximum responsibility for each sample
+    final_labels = responsibilities.argmax(axis=1)
+    return final_labels, means, covariances, priors
+
+def hbdscan_cluster(embeddings, min_cluster_size=2, min_samples=2):
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples = min_samples, gen_min_span_tree=True)
+    cluster_labels = clusterer.fit_predict(embeddings)
+    print(cluster_labels)
+    # exit()
+    return cluster_labels
+
+def umap_hdbscan_cluster(embeddings, n_components=2, min_cluster_size=5, min_samples=5):
+    """
+    First reduce the dimensionality of the embeddings using UMAP, then apply HDBSCAN clustering.
+
+    Args:
+        embeddings (np.ndarray): High-dimensional data array of shape (n_samples, n_features).
+        n_components (int): Number of dimensions for the UMAP embedding (typically 2 or 3).
+        min_cluster_size (int): The minimum size of clusters for HDBSCAN.
+        min_samples (int): The number of samples in a neighborhood for a point to be considered a core point in HDBSCAN.
     
-    return swapped_sequences
-
-
-# def findRightPerm(predicted_labels, labels):
-#     best_accuracy = 0.0
-#     best_permutation = None
-
-#     permutations = generate_swapped_sequences(predicted_labels)
-
-#     for perm in permutations:
-#         correct_predictions = torch.sum(perm == labels).item()
-#         if correct_predictions > best_accuracy:
-#             best_accuracy = correct_predictions
-#             best_permutation = perm
-
-#     return best_permutation, best_accuracy
-
-def findRightPerm(predicted_labels, labels):
-    # Ensure both predicted_labels and labels are of the same type\
-    device = predicted_labels.device
-    predicted_labels = predicted_labels.long()
-    labels = labels.long()
-
-    # Construct a cost matrix based on misalignment between true and predicted labels
-    unique_labels = torch.unique(labels)
-    cost_matrix = torch.zeros((len(unique_labels), len(unique_labels)), device=device)
-
-    for i, true_label in enumerate(unique_labels):
-        for j, pred_label in enumerate(unique_labels):
-            cost_matrix[i, j] = torch.sum((labels == true_label) & (predicted_labels != pred_label))
-
-    # Solve assignment problem using Hungarian algorithm
-    row_ind, col_ind = linear_sum_assignment(cost_matrix.cpu().numpy())
-    best_permutation = torch.zeros_like(predicted_labels, device=device)
-
-    # Remap predicted labels according to the optimal alignment
-    for i, j in zip(row_ind, col_ind):
-        best_permutation[predicted_labels == unique_labels[j]] = unique_labels[i]
-
-    # Calculate the accuracy of this alignment
-    correct_predictions = torch.sum(best_permutation == labels).item()
-    best_accuracy = correct_predictions / len(labels)
-
-    return best_permutation, best_accuracy
-
-def findSameGroups(labels):
-    same_groups_mask = labels.unsqueeze(0) == labels.unsqueeze(1)
-    diff_groups_mask = ~same_groups_mask
-    return same_groups_mask, diff_groups_mask
-
-def InfoNCELoss(output, labels):
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    embeddings = output
+    Returns:
+        cluster_labels (np.ndarray): Cluster labels from HDBSCAN. Noise points are labeled as -1.
+        embedding_umap (np.ndarray): The low-dimensional embedding of the data.
+    """
+    # Reduce dimensionality with UMAP
+    reducer = UMAP(n_components=n_components, random_state=42)
+    embedding_umap = reducer.fit_transform(embeddings)
     
-    # Get batch size and temperature
-    batch_size = embeddings.size(0)
-    temperature = 0.1
-
-    # Get masks for same and different groups
-    same_group_mask, diff_group_mask = findSameGroups(labels)
-    same_group_mask.fill_diagonal_(False)  # Remove self-similarity from positive mask
-
-    # Calculate similarity matrix (batch_size x batch_size)
-    similarity_matrix = F.cosine_similarity(embeddings.unsqueeze(1), embeddings.unsqueeze(0), dim=-1)
-
-    # Extract positive similarities
-    positive_similarities = similarity_matrix[same_group_mask].view(batch_size, -1)
+    # Apply HDBSCAN clustering on the UMAP-reduced embeddings
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples)
+    cluster_labels = clusterer.fit_predict(embedding_umap)
     
-    # Extract negative similarities
-    negative_similarities = similarity_matrix[diff_group_mask].view(batch_size, -1)
+    return cluster_labels, embedding_umap
 
-    # Ensure there are positive examples for all anchors
-    assert positive_similarities.size(1) > 0, "No positive examples found for anchors."
 
-    # Randomly select one positive similarity per anchor
-    random_pos_idx = torch.randint(0, positive_similarities.size(1), (batch_size,), device=device)
-    positives = positive_similarities[torch.arange(batch_size, device=device), random_pos_idx]
+def compute_best_accuracy(true_labels, pred_labels, n_clusters):
+    """
+    Given the ground truth labels and predicted labels, try all possible
+    permutations of cluster label mappings to determine the highest accuracy.
 
-    # Randomly select one negative similarity per anchor
-    random_neg_idx = torch.randint(0, negative_similarities.size(1), (batch_size,), device=device)
-    negatives = negative_similarities[torch.arange(batch_size, device=device), random_neg_idx]
-
-    # InfoNCE loss calculation
-    numerator = torch.exp(positives / temperature)
-    denominator = numerator + torch.exp(negatives / temperature)
-    loss = -torch.log(numerator / denominator)
-
-    # Average loss over batch
-    loss = loss.mean()
-
-    return loss
-def outputToLabels(output, labels):
-    # n_clusters = 2  # Set the number of clusters you expect
-
-    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-    # # Assuming the output is of shape (300, 1)
-    # cluster_output = modelCluster(output)  # Shape: [300, 1]
-
-    # # Find the index of the maximum value
-    # _, max_index = torch.max(cluster_output, dim=0)
-
-    # # Convert the max_index to an integer
-    # n_clusters = int(max_index.item()) + 1
-
-    n_clusters = 2
-
-    # print(n_clusters.shape)
-    # print("{} Predicted clusters".format(n_clusters))
-    # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='rbf', random_state=42)
-    spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-    # hdb = hdbscan.HDBSCAN(min_cluster_size=5, min_samples=5, metric='euclidean')
-
-    # predicted_labels = torch.from_numpy(hdb.fit_predict(output.detach().cpu().numpy())).to(device=device)
-    predicted_labels = torch.from_numpy(spectral_clustering.fit_predict(output.detach().cpu().numpy())).to(device=device)
-
-    return findRightPerm(predicted_labels, labels)
-
-def eval(model, amt, graphs):
-    
-    model.eval()
-    # graphs = torch.load('Datasets/pregenerated_graphs_validation.pt')
-    # graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
-
-    _, _, _, labels = graphs[0]
-    total_predictions = labels.size(0)
-    accTotal = []
-    for i in tqdm(range(0, amt)):
-        # data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=2)
-        data, adj, all_nodes, labels = graphs[i]
-        output = model(all_nodes.float(), adj.float())
+    Args:
+        true_labels (np.ndarray): Array of shape (n_samples,) with the true labels.
+        pred_labels (np.ndarray): Array of shape (n_samples,) with the predicted cluster labels.
+        n_clusters (int): Number of clusters.
         
-        predicted_labels, accuracy = outputToLabels(output, labels)
+    Returns:
+        best_accuracy (float): Highest accuracy achieved with the best permutation.
+        best_perm (tuple): The permutation (mapping) of predicted labels that gave the best accuracy.
+    """
+    best_accuracy = 0.0
+    best_perm = None
+    best_map = None
+    # Iterate over all possible permutations of cluster indices (0,1,...,n_clusters-1)
+    for perm in itertools.permutations(range(n_clusters)):
+        # Create a copy of predicted labels mapped using the current permutation
+        mapped_pred = np.zeros_like(pred_labels)
+        for orig_label, new_label in enumerate(perm):
+            mapped_pred[pred_labels == orig_label] = new_label
+        # Compute accuracy as the fraction of labels that match the ground truth
+        accuracy = np.mean(mapped_pred == true_labels)
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_perm = perm
+            best_map  = mapped_pred
+    return best_accuracy, best_perm, best_map
 
-        # Calculate accuracy
-        accTotal.append(accuracy)
 
-    # print(predicted_labels)
-    # print(labels)
+def getModel():
+    input_dim = 2
+    output_dim = 8
+    num_nodes = 200 
+    num_timesteps = 10 
+    hidden_dim = 64 
 
-    return statistics.mean(accTotal)
 
-# Load data
-if __name__ == '__main__':
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = TemporalGCN(
+        input_dim=input_dim,
+        output_dim=output_dim,
+        num_nodes=num_nodes,
+        num_timesteps=num_timesteps,
+        hidden_dim=hidden_dim
+    ).to(device)
 
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Evaluate GCN model.')
-    parser.add_argument('--i', type=int, default=1000, help='Number of iterations for evaluation')
-    parser.add_argument('--m', type=str, default=1000, help='Model')
-    parser.add_argument('--k', type=str, default=1000, help='Cluster')
-    parser.add_argument('--c', action='store_true', help="Continuous?")
-    parser.add_argument('--n', action='store_true', help="Gen New?")
-    args = parser.parse_args()
 
-    # Load the model
-    model = GCN(2, 64, 16).to(device)
-    # model = GCN(2, 32, 5).to(device)
-    model.load_state_dict(torch.load(args.m))
-    # model.load_state_dict(torch.load('gcn_model.pth'))
+    checkpoint_path = "best_model.pt"
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+
     model.eval()
-    print("Model loaded successfully.")
+    return model
 
-    # modelCluster = ClusterPredictor(16).to(device)
-    # modelCluster.load_state_dict(torch.load(args.k))
-
-    # modelCluster.eval()
-
-    # Evaluate the model
-    iterations = args.i
-
-    # graphs = torch.load('Datasets/3_groups_300_nodes_pregenerated_graphs_validation.pt')
-    # graphs = torch.load('300_nodes_pregenerated_graphs_validation.pt')
-    # graphs = torch.load('2_groups_100_nodes_pregenerated_graphs_validation.pt')
-    graphs = torch.load('2_groups_200_nodes_2_NNSTD_0.8_0.1_pregenerated_graphs_validation_hard.pt')
-
-    _, _, _, labels = graphs[0]
-    total_predictions = labels.size(0)
-    accTotal = []
-    for i in tqdm(range(0, iterations)):
-        if args.n:
-            data, adj, all_nodes, labels = makeDataSetCUDA(groupsAmount=2, nodeAmount=100)
-        else:
-            data, adj, all_nodes, labels = graphs[i]
-
-        with torch.no_grad():
-            output = model(all_nodes.float(), adj.float())
-            # _, predicted_labels = torch.max(output, 1)
-            # n_clusters = 2  # Set the number of clusters you expect
-            # spectral_clustering = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', n_neighbors=50, random_state=42)
-
-            # # Fit and predict cluster labels
-            # predicted_labels = spectral_clustering.fit_predict(output.detach().numpy())
-            # # Find right permutation
-            # predicted_labels, correct_predictions = findRightPerm(predicted_labels, labels.numpy())
-            predicted_labels, accuracy = outputToLabels(output, labels)
-
-        # Calculate accuracy
-        total_predictions = labels.size(0)
-        accTotal.append(accuracy)
-
-        if args.c:
-            # print(tsne_features[:, 0])
-
-            # plot_embeddings(tsne_features)
-
-            print("Predicted Labels:", predicted_labels)
-            print("True Labels:", labels)
-            print(f'Accuracy of the model: {accuracy:.2f}%')
-            plot_dataset(data, adj, all_nodes, labels, predicted_labels, output)
+if __name__ == "__main__":
     
-    print(f'Accuracy of the model: {accuracy:.2f}%')
-    print("Predicted Labels:", predicted_labels)
-    print("True Labels:", labels)
+    model = getModel()
 
-    print("Performance: {}".format(statistics.mean(accTotal)))
+    dataset = GCNDataset('val_data_Ego_2hop.pt')
 
-    # Plot results
-    plot_dataset(data, adj, all_nodes, labels, predicted_labels, output)
-    
+    # Create DataLoader
+    dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
 
-    #70 ish
+
+    acc_all = []
+    accuracyHBD_all = []
+    # for i in tqdm(range(500)):
+    for batch_idx, batch in enumerate(dataloader):
+        positions = batch['positions'][0] # batch, timestamp, node_amt, 3
+        ego_mask_batch = batch['ego_mask_batch'][0]
+        big_batch_positions = batch['big_batch_positions'][0]
+        big_batch_adjacency = batch['big_batch_adjacency'][0]
+
+        groups = positions[-1, :, 2]
+
+        # emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
+        emb = model(batch)
+        
+
+
+        # positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
+        # emb = model(positions[:, :, :2], adjacency, ego_mask, eval=True)
+        # print(emb.shape)
+        
+        emb_np = emb.cpu().detach().numpy().squeeze(0)
+        
+        # emb_np = emb_np[ego_mask.cpu()[-1]]
+        emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()]
+        # print(f"ego: {ego_mask.shape}")
+        # print(f"union ego: {ego_mask.any(dim=0)}")
+        # print(f"shape: {ego_mask.any(dim=0).shape}")
+        # group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
+        # print(f"position shape: {positions.shape}")
+        group_ids = positions[-1, ego_mask_batch.any(dim=0).cpu(), 2].long()
+        n_clusters = torch.unique(group_ids).size(0)
+        if n_clusters == 1:
+            continue
+        print(f"# CLUSTERS: {n_clusters}")
+
+        labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+
+        # labels = hbdscan_cluster(emb_np)
+        labelsHBD, embedding_umap = umap_hdbscan_cluster(emb_np, n_components=2, min_cluster_size=2, min_samples=2)
+
+
+        true_labels = group_ids.cpu().numpy()
+        # print(f"true labels: {true_labels}")
+        # print(f"gussed labels: {labels}")
+
+        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 3)
+
+        # print("Best permutation mapping (predicted label -> true label):", best_perm)
+        print("Best clustering accuracy: {:.4f}".format(accuracy))
+        # embed=emb[0, ego_mask.cpu()[-1]],
+        # pred_groups=pred_groups
+        # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_idx, ego_network_indices=ego_positions.cpu(), embed=emb_np, ego_mask=ego_mask)
+        # input("Press Enter to continue...")
+        
+        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, 3)
+
+        # print("Best permutation mapping (predicted label -> true label):", best_perm)
+        print("Best clustering accuracyHBD: {:.4f}".format(accuracyHBD))
+
+        accuracyHBD_all.append(accuracyHBD)
+        acc_avgHBD = sum(accuracyHBD_all) / len(accuracyHBD_all)
+        
+
+        acc_all.append(accuracy)
+        acc_avg = sum(acc_all) / len(acc_all)
+        print("ACC AVERAGE: ")
+        print(acc_avg)
+
+        print("ACCHBAD AVERAGE: ")
+        print(acc_avgHBD)
+
+    acc_avg = sum(acc_all) / len(acc_all)
+    print("ACC AVERAGE: ")
+    print(acc_avg)
+
+# Acc no padd 0.76
+# Acc w padd bad :(
+

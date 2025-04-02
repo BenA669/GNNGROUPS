@@ -1,0 +1,12 @@
+# This file is used internally by FFMPEG.
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2752311994_3956321650_223132457.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_4138536106_911632305.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_2840115676_1466659933.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_2820966764_1619512988.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_1534830344_3877218993.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_2840115676_3027056106.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_3101993602_2059630752.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_1364311548_2116145602.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_548731573_119195780.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_2388317782_3992755427.mp4'
+file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/SplitSceneMann/480p15/partial_movie_files/FeatureAdjacencyScene/2272357178_548731573_2818999033.mp4'

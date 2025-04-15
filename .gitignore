@@ -12,3 +12,5 @@ pyvenv.cfg
 *.mp4
 Dynamic/media
 Dynamic/SplitVid
+*.gif
+*.png

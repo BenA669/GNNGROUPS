@@ -113,12 +113,17 @@ def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn
         ego_mask_batch = batch['ego_mask_batch'] # Shape: (Batch, Timestep, Node Amt)
         ego_mask = ego_mask_batch.any(dim=1)  # shape: [B, N]
 
-
-        # emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
+        # Get embeddings with shape [B, max_nodes, T, hidden_dim]
         emb = model(batch)
-        
-        # loss = infonce_loss_fn(emb, groups)
-        loss = infonce_loss_fn(emb, groups, mask=ego_mask)
+
+        # Compute loss at each timestep and average
+        B, max_nodes, T, D = emb.shape
+        loss = 0.0
+        for t in range(T):
+            loss_t = infonce_loss_fn(emb[:, :, t, :], groups, mask=ego_mask)
+            loss += loss_t
+        loss = loss / T
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -140,11 +145,16 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
         ego_mask_batch = batch['ego_mask_batch']
         ego_mask = ego_mask_batch.any(dim=1)  # shape: [B, N]
 
+        emb = model(batch)  # shape: [B, max_nodes, T, hidden_dim]
 
-        # emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
-        emb = model(batch)
-        
-        loss = infonce_loss_fn(emb, groups, mask=ego_mask)
+        # Compute loss over all timesteps and average.
+        B, max_nodes, T, D = emb.shape
+        loss = 0.0
+        for t in range(T):
+            loss_t = infonce_loss_fn(emb[:, :, t, :], groups, mask=ego_mask)
+            loss += loss_t
+        loss = loss / T
+
         epoch_loss += loss.item()
 
     return epoch_loss / len(dataloader)
@@ -180,11 +190,7 @@ def main():
                             shuffle=False, 
                             collate_fn=collate_fn)
 
-    model = TemporalGCN(
-        input_dim=input_dim,
-        output_dim=output_dim,  # this is your embedding dim
-        hidden_dim=hidden_dim
-    ).to(device)
+    model = TemporalGCN(config=config).to(device)
     
     # InfoNCE Loss
     infonce_loss_fn = InfoNCELoss(temperature=temp)
@@ -196,13 +202,11 @@ def main():
     best_val_loss = float('inf')
     
     for epoch in range(1, epochs+1):
-        # train_loss = train_one_epoch(model, train_loader, optimizer, device, infonce_loss_fn)
         train_loss = train_one_epoch_better(model, train_loader, optimizer, device, infonce_loss_fn)
         val_loss = validate_one_epoch(model, val_loader, device, infonce_loss_fn)
         
         print(f"Epoch [{epoch}/{epochs}]  Train Loss: {train_loss:.4f}  Val Loss: {val_loss:.4f}")
         
-        # You can implement a simple early-stopping or model checkpointing:
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_name)

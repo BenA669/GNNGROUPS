@@ -9,23 +9,7 @@ from itertools import permutations
 
 def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None, 
                 ego_idx=None, ego_network_indices=None, pred_groups=None, ego_mask=None, save_path="animation.gif"):
-    """
-    Animate the dynamic graph. If embedding is provided, a t-SNE plot is saved.
-    If ego information is provided (ego_idx and ego_network_indices), nodes (and edges)
-    in the ego network appear at normal opacity while all other nodes/edges are drawn
-    more transparently. The ego node is further highlighted.
-    
-    Parameters:
-      all_positions_cpu: Tensor of shape (time_steps, node_amt, 3) with node positions and group id.
-      adjacency_dynamic_cpu: Tensor of shape (time_steps, node_amt, node_amt) with adjacency info.
-      embed (optional): An embedding tensor for t-SNE and clustering visualization.
-      ego_idx (optional): An integer giving the index of the ego node.
-      ego_network_indices (optional): Either:
-            - a 1D tensor or list of node indices (e.g. [3, 7, 10, ...]) that are part of the ego network, or
-            - a 3D tensor (time_steps, n_ego, 3) of ego positions (from which indices will be recovered)
-      save_path: Where to save the animated GIF.
-    """
-    # colors = ["g","r", "c", "m", "k"]
+
     colors = ["red", "green", "blue", "orange", "purple", "c"]
     time_steps, node_amt, _ = all_positions_cpu.shape
 

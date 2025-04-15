@@ -187,18 +187,8 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
 
 
 def getModel(config):
-    input_dim = int(config["model"]["input_dim"])
-    output_dim = int(config["model"]["output_dim"])
-    hidden_dim = int(config["model"]["hidden_dim"])
     model_name = config["training"]["model_name"]
-
-
-
-    model = TemporalGCN(
-        input_dim=input_dim,
-        output_dim=output_dim,
-        hidden_dim=hidden_dim
-    ).to(device)
+    model = TemporalGCN(config).to(device)
 
 
     # checkpoint_path = "good_best_model.pt"
@@ -208,6 +198,7 @@ def getModel(config):
 
     model.eval()
     return model
+
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
@@ -226,7 +217,6 @@ if __name__ == "__main__":
 
     acc_all = []
     accuracyHBD_all = []
-    # for i in tqdm(range(500)):
     for batch_idx, batch in enumerate(dataloader):
         positions = batch['positions'][0] # batch, timestamp, node_amt, 3
         adjacency = batch['adjacency'][0]
@@ -237,24 +227,12 @@ if __name__ == "__main__":
 
         groups = positions[-1, :, 2]
 
-        # emb = model(big_batch_positions, big_batch_adjacency, ego_mask_batch)
         emb = model(batch)
         
-
-
-        # positions, adjacency, edge_indices, ego_idx, ego_mask, ego_positions = getData()
-        # emb = model(positions[:, :, :2], adjacency, ego_mask, eval=True)
-        # print(emb.shape)
+        emb_np = emb.cpu().detach().numpy().squeeze(0)[:, -1, :]
+        # emb_np = emb.cpu().detach().numpy().squeeze(0)
         
-        emb_np = emb.cpu().detach().numpy().squeeze(0)
-        
-        # emb_np = emb_np[ego_mask.cpu()[-1]]
         emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()]
-        # print(f"ego: {ego_mask.shape}")
-        # print(f"union ego: {ego_mask.any(dim=0)}")
-        # print(f"shape: {ego_mask.any(dim=0).shape}")
-        # group_ids = positions[-1, ego_mask.cpu()[-1], 2].long()
-        # print(f"position shape: {positions.shape}")
         group_ids = positions[-1, ego_mask_batch.any(dim=0).cpu(), 2].long()
         n_clusters = torch.unique(group_ids).size(0)
         if n_clusters == 1:
@@ -274,22 +252,14 @@ if __name__ == "__main__":
         accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, groups_amt)
 
         
-
-        # print("Best permutation mapping (predicted label -> true label):", best_perm)
-        
-        # embed=emb[0, ego_mask.cpu()[-1]],
-        # ego_network_indices = torch.nonzero(ego_mask_batch, as_tuple=False).squeeze(dim=1)
-        
         accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, groups_amt)
         print(f"gussed labels:  {pred_groups}")
 
-        # print("Best permutation mapping (predicted label -> true label):", best_perm)
         print("Best clustering accuracy: {:.4f}".format(accuracy))
         print("Best clustering accuracyHBD: {:.4f}".format(accuracyHBD))
 
         accuracyHBD_all.append(accuracyHBD)
         acc_avgHBD = sum(accuracyHBD_all) / len(accuracyHBD_all)
-        
 
         acc_all.append(accuracy)
         acc_avg = sum(acc_all) / len(acc_all)
@@ -306,7 +276,4 @@ if __name__ == "__main__":
     acc_avg = sum(acc_all) / len(acc_all)
     print("ACC AVERAGE: ")
     print(acc_avg)
-
-# Acc no padd 0.76
-# Acc w padd bad :(
 

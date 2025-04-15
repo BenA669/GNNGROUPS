@@ -1,6 +1,8 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from makeEpisode import getEgo
+import configparser
+
 
 class GCNDataset(Dataset):
     def __init__(self, data_path):
@@ -17,16 +19,13 @@ class GCNDataset(Dataset):
         return (positions, adjacency, edge_indices, ego_index, pruned_adj, reachable)
 
 def collate_fn(batch):
-    # Unzip the batch (each sample is a tuple)
+    # Unzip the batch each sample is a tuple
     positions, adjacency, edge_indices, ego_index_batch, pruned_adj, reachable = zip(*batch)
     B = len(edge_indices)
     T = len(edge_indices[0])    
 
-    # print(ego_positions[0].shape)
-
-    # ego_positions [batch, timestamp, node_amt, (x,y,Group)]
     
-    # Stack the ego_positions (and any other elements you want to batch)
+    # Stack the ego_positions
     positions_batch = torch.stack(positions, dim=0) # [batchsize, time_stamp, node_amt, 3]
     ego_mask_batch = torch.stack(reachable, dim=0) # [batchsize, time_stamp, node_amt]
     adjacency_batch = torch.stack(adjacency, dim=0) # [batchsize, time_stamp, node_amt, node_amt]
@@ -86,13 +85,16 @@ def collate_fn(batch):
     }
 
 if __name__ == '__main__':
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+
     # Create dataset
-    dataset = GCNDataset('test_data_Ego_2hop.pt')
+    dataset = GCNDataset(str(config["dataset"]["dataset_val"]))
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn, shuffle=True)
 
     for batch_idx, batch in enumerate(dataloader):
-        print(batch['big_batched_adjacency_pruned'].shape)
-        print(batch['positions'].shape)
+        # print(batch['big_batched_adjacency_pruned'].shape)
+        print(batch['big_batch_positions'].shape)
         break

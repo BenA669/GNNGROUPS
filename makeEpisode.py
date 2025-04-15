@@ -186,15 +186,9 @@ def makeDatasetDynamicPerlin(
         for g in range(group_amt):
             group_indicies = (all_positions[t, :, 2] == g)
             non_group_indicies = (all_positions[t, :, 2] != g)
-            group_edge_amount[g] = dist_adj[group_indicies][:, non_group_indicies].flatten().sum()
-
-        
-
-        
+            group_edge_amount[g] = dist_adj[group_indicies][:, non_group_indicies].flatten().sum()        
 
     adjacency_dynamic = torch.stack(adjacency_dynamic, dim=0)
-
-    
 
     # Move to CPU for convenience.
     all_positions_cpu = all_positions.cpu()
@@ -350,9 +344,6 @@ if __name__ == '__main__':
         boundary=boundary,
         perlin_offset=perlin_offset_amt
     )
-
-    # Visualize the evolving graph using the animate module.
-    # plot_faster(all_positions_cpu, adjacency_dynamic_cpu)
 
     # ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False)
     ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=min_groups)

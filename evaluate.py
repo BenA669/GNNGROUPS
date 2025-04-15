@@ -10,6 +10,8 @@ import hdbscan
 from umap import UMAP
 from datasetEpisode import GCNDataset, collate_fn
 from torch.utils.data import DataLoader
+import configparser
+
 
 
 
@@ -184,24 +186,23 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
     return best_accuracy, best_perm, best_map
 
 
-def getModel():
-    input_dim = 2
-    output_dim = 8
-    num_nodes = 100 
-    num_timesteps = 100
-    hidden_dim = 64 
+def getModel(config):
+    input_dim = int(config["model"]["input_dim"])
+    output_dim = int(config["model"]["output_dim"])
+    hidden_dim = int(config["model"]["hidden_dim"])
+    model_name = config["training"]["model_name"]
+
 
 
     model = TemporalGCN(
         input_dim=input_dim,
         output_dim=output_dim,
-        num_nodes=num_nodes,
-        num_timesteps=num_timesteps,
         hidden_dim=hidden_dim
     ).to(device)
 
 
-    checkpoint_path = "good_best_model.pt"
+    # checkpoint_path = "good_best_model.pt"
+    checkpoint_path = model_name
     # Good best model is 68 HBD acc and 71 CEC acc
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
@@ -209,10 +210,15 @@ def getModel():
     return model
 
 if __name__ == "__main__":
-    
-    model = getModel()
+    config = configparser.ConfigParser()
+    config.read('config.ini')
 
-    dataset = GCNDataset('val_long_8.pt')
+    groups_amt = int(config["dataset"]["groups"])
+    
+    model = getModel(config)
+
+    dataset = GCNDataset(str(config["dataset"]["dataset_val"]))
+
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
@@ -265,7 +271,7 @@ if __name__ == "__main__":
         print(f"true labels:    {true_labels}")
         
 
-        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, 8)
+        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, groups_amt)
 
         
 
@@ -274,7 +280,7 @@ if __name__ == "__main__":
         # embed=emb[0, ego_mask.cpu()[-1]],
         # ego_network_indices = torch.nonzero(ego_mask_batch, as_tuple=False).squeeze(dim=1)
         
-        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, 8)
+        accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, groups_amt)
         print(f"gussed labels:  {pred_groups}")
 
         # print("Best permutation mapping (predicted label -> true label):", best_perm)

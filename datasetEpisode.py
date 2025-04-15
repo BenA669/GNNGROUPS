@@ -94,5 +94,5 @@ if __name__ == '__main__':
 
     for batch_idx, batch in enumerate(dataloader):
         print(batch['big_batched_adjacency_pruned'].shape)
-        print(batch['big_batch_adjacency'].shape)
+        print(batch['positions'].shape)
         break

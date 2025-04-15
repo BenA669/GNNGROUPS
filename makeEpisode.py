@@ -5,6 +5,7 @@ import torch
 from noise import pnoise2
 from animate import plot_faster
 import time as time
+import configparser
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
     # (node_i, node_j) for all 1-entries
@@ -58,7 +59,8 @@ def makeDatasetDynamicPerlin(
     persistence=0.5,
     lacunarity=2.0,
     static=False,
-    boundary=8
+    boundary=4,
+    perlin_offset=0.05
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     rng = torch.Generator(device=device)
@@ -157,7 +159,7 @@ def makeDatasetDynamicPerlin(
                     elif mean_y < -boundary:
                         tilt_y = abs(tilt_y)
                     group_tilts[g] = (tilt_x, tilt_y)
-                group_noise_offsets[g] = (group_noise_offsets[g][0]+0.05, group_noise_offsets[g][1]+0.05)
+                group_noise_offsets[g] = (group_noise_offsets[g][0]+perlin_offset, group_noise_offsets[g][1]+perlin_offset)
             all_positions[t] = new_positions
 
         # --- 5. For each time step, add dynamic (distance–based) connections ---
@@ -313,37 +315,46 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=
 
 
 if __name__ == '__main__':
+
+    config = configparser.ConfigParser()
+    config.read('config.ini')
     
+    time_steps = int(config["dataset"]["timesteps"])
+    group_amt = int(config["dataset"]["groups"])
+    node_amt = int(config["dataset"]["nodes"])
 
-    time_steps = 100
-    group_amt = 8
-    node_amt = 100
+    distance_threshold = int(config["dataset"]["distance_threshold"])
+    noise_scale = float(config["dataset"]["noise_scale"])      # frequency of the noise
+    noise_strength = float(config["dataset"]["noise_strength"])      # influence of the noise gradient
+    tilt_strength = float(config["dataset"]["tilt_strength"])     # constant bias per group
+    boundary = int(config["dataset"]["boundary"])
 
-    noise_scale = 0.05      # frequency of the noise
-    noise_strength = 2      # influence of the noise gradient
-    tilt_strength = 0.25     # constant bias per group
+    hops = int(config["dataset"]["hops"])
+    min_groups = int(config["dataset"]["min_groups"])
 
+    train_name = str(config["dataset"]["dataset_train"])
+    val_name = str(config["dataset"]["dataset_val"])
+
+    samples = int(config["dataset"]["samples"])
+
+    perlin_offset_amt = float(config["dataset"]["perlin_offset_amt"])
+    
     all_positions_cpu, adjacency_dynamic_cpu, edge_indices = makeDatasetDynamicPerlin(
         node_amt=node_amt,
         group_amt=group_amt,
-        std_dev=1,
         time_steps=time_steps,
-        distance_threshold=2,
-        intra_prob=0.05,
-        inter_prob=0.001,
+        distance_threshold=distance_threshold,
         noise_scale=noise_scale,
         noise_strength=noise_strength,
         tilt_strength=tilt_strength,
-        octaves=1,
-        persistence=0.5,
-        lacunarity=2.0,
-        boundary=4
+        boundary=boundary,
+        perlin_offset=perlin_offset_amt
     )
 
     # Visualize the evolving graph using the animate module.
     # plot_faster(all_positions_cpu, adjacency_dynamic_cpu)
 
     # ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False)
-    ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False, min_groups=4)
+    ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=min_groups)
 
     plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)

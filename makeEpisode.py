@@ -50,15 +50,12 @@ def makeDatasetDynamicPerlin(
     std_dev=1,
     time_steps=20,
     distance_threshold=2,
-    intra_prob=0.05,
-    inter_prob=0.001,
     noise_scale=1.0,      # scales the noise coordinate (affects frequency)
     noise_strength=0.1,   # multiplier for the noise gradient (step size)
     tilt_strength=0.05,   # added constant bias (tilt) for each group
     octaves=1,
     persistence=0.5,
     lacunarity=2.0,
-    static=False,
     boundary=4,
     perlin_offset=0.05
 ):
@@ -132,9 +129,13 @@ def makeDatasetDynamicPerlin(
                     x, y, offset, noise_scale, eps, octaves, persistence, lacunarity
                 )
 
+                if speed_multiplier > 0.5:
+                    noise_strength_mod = noise_strength/1.5
+                else:
+                    noise_strength_mod = noise_strength
                 # Combine noise gradient with the constant tilt.
-                step_x = noise_strength * grad_x + tilt_strength * tilt_vector[0]
-                step_y = noise_strength * grad_y + tilt_strength * tilt_vector[1]
+                step_x = noise_strength_mod * grad_x + tilt_strength * tilt_vector[0]
+                step_y = noise_strength_mod * grad_y + tilt_strength * tilt_vector[1]
 
                 # Multiply the step by the group's speed multiplier.
                 step_x *= speed_multiplier

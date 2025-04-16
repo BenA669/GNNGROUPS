@@ -2,3 +2,5 @@
 # edge information
 # get more ego node information to see how well the model is performing
 # WORK ON PAPER NWO
+
+find real datasets to try it on

@@ -6,10 +6,26 @@ import matplotlib.colors as mcolors
 import numpy as np
 from sklearn.cluster import SpectralClustering
 from itertools import permutations
+from sklearn.manifold import TSNE
+
 
 def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None, 
                 ego_idx=None, ego_network_indices=None, pred_groups=None, ego_mask=None, save_path="animation.gif"):
+    
 
+    if embed is not None:
+        tsne = TSNE(n_components=2, random_state=0)
+        X_embedded = tsne.fit_transform(embed)
+
+        # Plot the embedded data
+        plt.clf()
+        plt.scatter(X_embedded[:, 0], X_embedded[:, 1])
+        plt.title("t-SNE visualization of embedding")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.savefig("t-SNE-embed.png")
+        plt.clf()
+    
     colors = ["red", "green", "blue", "orange", "purple", "c"]
     time_steps, node_amt, _ = all_positions_cpu.shape
 

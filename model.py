@@ -50,7 +50,7 @@ class TrainOT(nn.Module):
         self.gcn2 = GCNConv(self.gcn_dim, self.gcn_dim)
 
         # Train
-        self.trainOT = torch.rand(self.train_dim, device=self.device)
+        self.trainOT = nn.Parameter(torch.randn(self.train_dim))
 
         # Query, Key, Value, Speak
         self.query = nn.Linear(self.gcn_dim, self.rel_dim)

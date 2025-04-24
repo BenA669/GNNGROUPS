@@ -234,11 +234,10 @@ if __name__ == "__main__":
         # Accumulate loss across all timesteps
         trainOT_state = None
         for t in range(timesteps):
-            ego_mask = ego_mask_batch[:, t, :]
             emb, trainOT_state = model(batch, t, trainOT_state)  # Get embeddings at timestep t
 
             
-        emb_np = emb.cpu().detach().numpy().squeeze(0)[:, -1, :]
+        emb_np = emb.cpu().detach().numpy().squeeze(0)
         emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()]
 
         group_ids = positions[-1, ego_mask_batch.any(dim=0).cpu(), 2].long()

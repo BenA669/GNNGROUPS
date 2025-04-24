@@ -194,12 +194,13 @@ if __name__ == "__main__":
         accuracyHBD, best_perm, pred_groups_hbd = compute_best_accuracy(true_labels, labelsHBD, groups_amt)
 
         # Compute loss
-        B, max_nodes, T, D = emb.shape
-        loss = 0.0
-        for t in range(T):
-            loss_t = infonce_loss_fn(emb[:, :, t, :], groups, mask=ego_mask)
-            loss += loss_t
-        loss = loss / T        
+        # B, max_nodes, T, D = emb.shape
+        # loss = 0.0
+        # for t in range(T):
+        #     loss_t = infonce_loss_fn(emb[:, :, t, :], groups, mask=ego_mask)
+        #     loss += loss_t
+        # loss = loss / T        
+        loss = infonce_loss_fn(emb[:, :, -1, :], groups, mask=ego_mask)
 
         print("Loss: {}".format(loss))
         

@@ -30,6 +30,39 @@ def tensor_to_edge_index(adj):
     edge_index = torch.stack([src, dst], dim=0)
     return edge_index
 
+class LSTMGCN(nn.Module):
+    def __init__(self, config):
+        super(LSTMGCN, self).__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.num_nodes = int(config["dataset"]["nodes"])
+        self.num_timesteps = int(config["dataset"]["timesteps"])
+
+        self.input_dim = int(config["model"]["input_dim"])
+        self.hidden_dim = int(config["model"]["hidden_dim"])
+        self.hidden_dim_2 = int(config["model"]["hidden_dim_2"])
+        self.output_dim = int(config["model"]["output_dim"])
+        self.num_heads = int(config["model"]["num_heads"])
+
+        self.batches = int(config["training"]["batch_size"])
+        self.max_nodes = self.batches * self.num_nodes
+
+        # GCN Layers
+        self.gcn1 = GCNConv(self.input_dim, self.hidden_dim)
+        self.gcn2 = GCNConv(self.input_dim, self.hidden_dim)
+
+        # LSTM Layer
+        self.lstm = nn.LSTM(self.hidden_dim, self.hidden_dim)
+
+        # FC Layers
+        self.fc1 = nn.Linear(self.hidden_dim, self.hidden_dim_2)
+        self.fc2 = nn.Linear(self.hidden_dim_2, self.hidden_dim)
+
+    def forward(self, batch):
+        ego_mask_b = batch["ego_mask_batch"]
+        positions_b = batch["big_batch_positions"]
+        num_timesteps = positions_b.shape[0]
+        return
+
 class TemporalGCN(nn.Module):
     def __init__(self, config):
         super(TemporalGCN, self).__init__()
@@ -143,21 +176,21 @@ class TemporalGCN(nn.Module):
         x_attn = torch.stack(outputs, dim=0)
 
         ## FC 2
-        fc_outputs = []
-        for t in range(num_timesteps):
-            emb_t = x_attn[:, t, :] # (B*max_nodes, hidden_dim)
-            fc1_out = self.fc1(emb_t) # (B*max_nodes, hidden_dim_2)
-            fc2_out = self.fc2(fc1_out) # (B*max_nodes, output_dim)
-            fc_outputs.append(fc2_out)
-        x_fc = torch.stack(fc_outputs, dim=1) # (B*max_nodes, T, output_dim)
-        x_out = x_fc.view(B, max_nodes, self.num_timesteps, self.output_dim)
-        return x_out
+        # fc_outputs = []
+        # for t in range(num_timesteps):
+        #     emb_t = x_attn[:, t, :] # (B*max_nodes, hidden_dim)
+        #     fc1_out = self.fc1(emb_t) # (B*max_nodes, hidden_dim_2)
+        #     fc2_out = self.fc2(fc1_out) # (B*max_nodes, output_dim)
+        #     fc_outputs.append(fc2_out)
+        # x_fc = torch.stack(fc_outputs, dim=1) # (B*max_nodes, T, output_dim)
+        # x_out = x_fc.view(B, max_nodes, self.num_timesteps, self.output_dim)
+        # return x_out
 
         ## FC 2
 
-        # x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
+        x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
         
-        # return x_out
+        return x_out
 
         # lstm_out, (h_n, _) = self.lstm(x_placeholder)
         

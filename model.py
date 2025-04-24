@@ -141,8 +141,23 @@ class TemporalGCN(nn.Module):
             outputs.append(attn_out.squeeze(0))
         # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
         x_attn = torch.stack(outputs, dim=0)
-        x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
+
+        ## FC 2
+        fc_outputs = []
+        for t in range(num_timesteps):
+            emb_t = x_attn[:, t, :] # (B*max_nodes, hidden_dim)
+            fc1_out = self.fc1(emb_t) # (B*max_nodes, hidden_dim_2)
+            fc2_out = self.fc2(fc1_out) # (B*max_nodes, output_dim)
+            fc_outputs.append(fc2_out)
+        x_fc = torch.stack(fc_outputs, dim=1) # (B*max_nodes, T, output_dim)
+        x_out = x_fc.view(B, max_nodes, self.num_timesteps, self.output_dim)
         return x_out
+
+        ## FC 2
+
+        # x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
+        
+        # return x_out
 
         # lstm_out, (h_n, _) = self.lstm(x_placeholder)
         

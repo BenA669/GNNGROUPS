@@ -58,9 +58,9 @@ class TrainOT(nn.Module):
         self.value = nn.Linear(self.gcn_dim, self.train_dim)
         self.speak = nn.Linear(self.train_dim, self.output_dim*self.num_nodes)
 
-    def forward(self, batch, timestep, trainOT):
-        if trainOT is None:
-            trainOT = torch.randn(self.train_dim, device=self.device)
+    def forward(self, batch, timestep):
+        # if trainOT is None:
+        #     trainOT = torch.randn(self.train_dim, device=self.device)
 
         # (Timestep, Nodes*Batch, 2) -> (Nodes*Batch, 2)
         # (Timestep, Nodes*Batch, Nodes*Batch) -> (Nodes*Batch, Nodes*Batch)

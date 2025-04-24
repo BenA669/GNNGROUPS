@@ -121,7 +121,7 @@ def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn
         trainOT_state = None
         for t in range(timesteps):
             ego_mask = ego_mask_batch[:, t, :]
-            emb, trainOT_state = model(batch, t, trainOT_state)  # Get embeddings at timestep t
+            emb, trainOT_state = model(batch, t)  # Get embeddings at timestep t
             loss_t = infonce_loss_fn(emb, groups, mask=ego_mask)
             total_loss += loss_t
 

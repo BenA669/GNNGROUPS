@@ -59,7 +59,8 @@ if __name__ == "__main__":
         if train:
             torch.save(data, train_name)
         else:
-            torch.save(val_data, val_name)
+            torch.save(data, val_name)
+            
     Gen(test_data, train=True)
 
     Gen(val_data, train=False)

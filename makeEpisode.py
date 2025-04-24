@@ -68,16 +68,21 @@ def makeDatasetDynamicPerlin(
         rng.manual_seed(torch.initial_seed())
 
     # --- 1. Assign nodes to groups and set initial positions ---
-    if mixed:
-        rand_vals = torch.rand(node_amt, generator=rng, device=device)
-        group_amt_r = torch.randint(2, group_amt+1, (1,), generator=rng, device=device).item()
-        group_amt = group_amt_r
-        group_edges = torch.arange(1, group_amt_r + 1, device=device) * (1.0 / group_amt)
-        groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
-    else:
-        rand_vals = torch.rand(node_amt, generator=rng, device=device)
-        group_edges = torch.arange(1, group_amt + 1, device=device) * (1.0 / group_amt)
-        groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
+    # if mixed:
+    #     rand_vals = torch.rand(node_amt, generator=rng, device=device)
+    #     group_amt_r = torch.randint(2, group_amt+1, (1,), generator=rng, device=device).item()
+    #     group_amt = group_amt_r
+    #     group_edges = torch.arange(1, group_amt_r + 1, device=device) * (1.0 / group_amt)
+    #     groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
+    # else:
+    #     print("passed")
+    #     rand_vals = torch.rand(node_amt, generator=rng, device=device)
+    #     group_edges = torch.arange(1, group_amt + 1, device=device) * (1.0 / group_amt)
+    #     groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
+    rand_vals = torch.rand(node_amt, generator=rng, device=device)
+    group_edges = torch.arange(1, group_amt + 1, device=device) * (1.0 / group_amt)
+    groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
+
 
     # Use a random “seed” (group center) for each group.
     last_seen_seeds = torch.rand((group_amt, 2), device=device)  # shape: (group_amt, 2)
@@ -352,11 +357,11 @@ if __name__ == '__main__':
         tilt_strength=tilt_strength,
         boundary=boundary,
         perlin_offset=perlin_offset_amt,
-        mixed=True
+        mixed=False
         
     )
 
     # ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False)
     ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=groups_r)
 
-    # plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)
+    plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)

@@ -42,7 +42,7 @@ class TrainOT(nn.Module):
         self.output_dim = int(config["model"]["output_dim"])
         self.num_heads = int(config["model"]["num_heads"])
 
-        self.batches = int(config["training"]["batch_size"])
+        self.batches = 1
         self.num_nodes = int(config["dataset"]["nodes"])
 
         # GCN Layers
@@ -316,9 +316,9 @@ if __name__ == '__main__':
         ego_mask_batch = batch['ego_mask_batch']
         big_batch_positions = batch['big_batch_positions']
         big_batch_adjacency = batch['big_batch_adjacency']
-        
+        trainOT_state = None
         for time in range(time_steps):
-            emb = model(batch, time)
+            emb, trainOT_state = model(batch, time, trainOT_state)
 
             print(emb.shape)
 

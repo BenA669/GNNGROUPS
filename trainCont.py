@@ -112,13 +112,16 @@ def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn
         positions = batch['positions']
         groups = positions[:, 0, :, 2]
         ego_mask_batch = batch['ego_mask_batch'] # Shape: (Batch, Timestep, Node Amt)
-        ego_mask = ego_mask_batch.any(dim=1)  # shape: [B, N]
-
+        # ego_mask = ego_mask_batch.any(dim=1)  # shape: [B, N]
+        # print(ego_mask.shape)
+        # exit()
         
         total_loss = 0.0
         # Accumulate loss across all timesteps
         trainOT_state = None
         for t in range(timesteps):
+            ego_mask = ego_mask_batch[:, t, :]
+            print(ego_mask.shape)
             emb, trainOT_state = model(batch, t, trainOT_state)  # Get embeddings at timestep t
             loss_t = infonce_loss_fn(emb, groups, mask=ego_mask)
             total_loss += loss_t

@@ -140,7 +140,7 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
     epoch_loss = 0.0
     
     print("Validating")
-    for batch_idx, batch in enumerate(dataloader):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         positions = batch['positions']
         groups = positions[:, 0, :, 2]
         ego_mask_batch = batch['ego_mask_batch']

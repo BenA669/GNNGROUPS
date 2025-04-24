@@ -71,7 +71,8 @@ class TemporalGCN(nn.Module):
             for _ in range(self.max_nodes)
         ])
         # Fully connected output layer
-        self.fc = nn.Linear(self.hidden_dim, self.output_dim)
+        self.fc1 = nn.Linear(self.hidden_dim, self.hidden_dim_2)
+        self.fc2 = nn.Linear(self.hidden_dim_2, self.output_dim)
         
     def forward(self, batch, eval=False):
         ego_mask = batch['ego_mask_batch'] # Shape: (Batch, Timestep, Node Amt)

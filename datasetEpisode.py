@@ -7,14 +7,14 @@ import configparser
 class GCNDataset(Dataset):
     def __init__(self, data_path):
         super().__init__()
-        self.data = torch.load(data_path)
+        self.data = torch.load(data_path, weights_only=True)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        (positions, adjacency, edge_indices, group_amt) = self.data[idx]
-        # (positions, adjacency, edge_indices, group_amt, _, _) = self.data[idx]
+        # (positions, adjacency, edge_indices, group_amt) = self.data[idx]
+        (positions, adjacency, edge_indices, group_amt, _, _) = self.data[idx]
         # Convert everything to tensors
         ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False, min_groups=group_amt)
         return (positions, adjacency, edge_indices, ego_index, pruned_adj, reachable)

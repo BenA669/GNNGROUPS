@@ -10,6 +10,7 @@ if __name__ == "__main__":
     
     time_steps = int(config["dataset"]["timesteps"])
     group_amt = int(config["dataset"]["groups"])
+    mixed = bool(config["dataset"]["mixed"])
     node_amt = int(config["dataset"]["nodes"])
 
     distance_threshold = int(config["dataset"]["distance_threshold"])
@@ -19,20 +20,29 @@ if __name__ == "__main__":
     boundary = int(config["dataset"]["boundary"])
 
     hops = int(config["dataset"]["hops"])
-    min_groups = int(config["dataset"]["min_groups"])
 
-    train_name = str(config["dataset"]["dataset_train"])
-    val_name = str(config["dataset"]["dataset_val"])
+    # train_name = str(config["dataset"]["dataset_train"])
+    # val_name = str(config["dataset"]["dataset_val"])
+
+    dir_path = str(config["dataset"]["dir_path"])
+    dataset_name = str(config["dataset"]["dataset_name"])
+
+    train_name="{}{}_train.pt".format(dir_path, dataset_name)
+    val_name="{}{}_val.pt".format(dir_path, dataset_name)
 
     samples = int(config["dataset"]["samples"])
 
     test_data = []
     val_data = []
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    rng = torch.Generator(device=device)
+    rng.manual_seed(torch.initial_seed())
+
     
     def Gen(data, train=True):
         for _ in tqdm(range(samples)):
-            positions, adjacency, edge_indices = makeDatasetDynamicPerlin(
+            positions, adjacency, edge_indices, groups = makeDatasetDynamicPerlin(
                 node_amt=node_amt,
                 group_amt=group_amt,
                 time_steps=time_steps,
@@ -40,10 +50,12 @@ if __name__ == "__main__":
                 noise_scale=noise_scale,
                 noise_strength=noise_strength,
                 tilt_strength=tilt_strength,
-                boundary=boundary
+                boundary=boundary,
+                mixed=mixed,
+                rng=rng
             )
-            ego_index, pruned_adj, reachable = getEgo(positions, adjacency, hop=hops, union=False, min_groups=min_groups)
-            data.append((positions, adjacency, edge_indices, ego_index, pruned_adj, reachable))
+            # ego_index, pruned_adj, reachable = getEgo(positions, adjacency, hop=hops, union=False, min_groups=group_amt)
+            data.append((positions, adjacency, edge_indices, groups))
         if train:
             torch.save(data, train_name)
         else:

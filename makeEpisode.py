@@ -57,16 +57,27 @@ def makeDatasetDynamicPerlin(
     persistence=0.5,
     lacunarity=2.0,
     boundary=4,
-    perlin_offset=0.05
+    perlin_offset=0.05,
+    mixed=False,
+    rng=None
 ):
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    rng = torch.Generator(device=device)
-    rng.manual_seed(torch.initial_seed())
+    if rng is None:
+        rng = torch.Generator(device=device)
+        rng.manual_seed(torch.initial_seed())
 
     # --- 1. Assign nodes to groups and set initial positions ---
-    rand_vals = torch.rand(node_amt, generator=rng, device=device)
-    group_edges = torch.arange(1, group_amt + 1, device=device) * (1.0 / group_amt)
-    groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
+    if mixed:
+        rand_vals = torch.rand(node_amt, generator=rng, device=device)
+        group_amt_r = torch.randint(2, group_amt+1, (1,), generator=rng, device=device).item()
+        group_amt = group_amt_r
+        group_edges = torch.arange(1, group_amt_r + 1, device=device) * (1.0 / group_amt)
+        groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
+    else:
+        rand_vals = torch.rand(node_amt, generator=rng, device=device)
+        group_edges = torch.arange(1, group_amt + 1, device=device) * (1.0 / group_amt)
+        groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
 
     # Use a random “seed” (group center) for each group.
     last_seen_seeds = torch.rand((group_amt, 2), device=device)  # shape: (group_amt, 2)
@@ -202,7 +213,7 @@ def makeDatasetDynamicPerlin(
         edge_index_t = edge_index_t.to(device)
         edge_indices.append(edge_index_t)
 
-    return all_positions_cpu, adjacency_dynamic_cpu, edge_indices
+    return all_positions_cpu, adjacency_dynamic_cpu, edge_indices, group_amt
 
 def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=True):
     """
@@ -327,14 +338,11 @@ if __name__ == '__main__':
     hops = int(config["dataset"]["hops"])
     min_groups = int(config["dataset"]["min_groups"])
 
-    train_name = str(config["dataset"]["dataset_train"])
-    val_name = str(config["dataset"]["dataset_val"])
-
     samples = int(config["dataset"]["samples"])
 
     perlin_offset_amt = float(config["dataset"]["perlin_offset_amt"])
     
-    all_positions_cpu, adjacency_dynamic_cpu, edge_indices = makeDatasetDynamicPerlin(
+    all_positions_cpu, adjacency_dynamic_cpu, edge_indices, groups_r = makeDatasetDynamicPerlin(
         node_amt=node_amt,
         group_amt=group_amt,
         time_steps=time_steps,
@@ -343,10 +351,12 @@ if __name__ == '__main__':
         noise_strength=noise_strength,
         tilt_strength=tilt_strength,
         boundary=boundary,
-        perlin_offset=perlin_offset_amt
+        perlin_offset=perlin_offset_amt,
+        mixed=True
+        
     )
 
     # ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False)
-    ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=min_groups)
+    ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=groups_r)
 
-    plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)
+    # plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)

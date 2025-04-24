@@ -4,3 +4,7 @@
 # WORK ON PAPER NWO
 
 find real datasets to try it on
+
+visualize weights of attention layer
+
+tasneems@easternct.edu

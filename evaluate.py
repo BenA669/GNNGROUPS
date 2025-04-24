@@ -144,7 +144,7 @@ def umap_hdbscan_cluster(embeddings, n_components=2, min_cluster_size=5, min_sam
         embedding_umap (np.ndarray): The low-dimensional embedding of the data.
     """
     # Reduce dimensionality with UMAP
-    reducer = UMAP(n_components=n_components, random_state=42)
+    reducer = UMAP(n_components=n_components)
     embedding_umap = reducer.fit_transform(embeddings)
     
     # Apply HDBSCAN clustering on the UMAP-reduced embeddings
@@ -187,14 +187,14 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
 
 
 def getModel(config):
-    model_name = config["training"]["model_name"]
+    dir_path = str(config["dataset"]["dir_path"])
+    model_name = str(config["training"]["model_name_pt"])
+    model_save = "{}{}".format(dir_path, model_name)
+
     model = TemporalGCN(config).to(device)
 
-
-    # checkpoint_path = "good_best_model.pt"
-    checkpoint_path = model_name
     # Good best model is 68 HBD acc and 71 CEC acc
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    model.load_state_dict(torch.load(model_save, map_location=device, weights_only=True))
 
     model.eval()
     return model
@@ -207,7 +207,12 @@ if __name__ == "__main__":
     groups_amt = int(config["dataset"]["groups"])
     model = getModel(config)
 
-    dataset = GCNDataset(str(config["dataset"]["dataset_val"]))
+    dir_path = str(config["dataset"]["dir_path"])
+    dataset_name = str(config["dataset"]["dataset_name"])
+    val_name="{}{}_val.pt".format(dir_path, dataset_name)
+
+
+    dataset = GCNDataset(val_name)
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
 
     acc_all = []
@@ -231,8 +236,8 @@ if __name__ == "__main__":
         # print(f"# CLUSTERS: {n_clusters}")
         true_labels = group_ids.cpu().numpy()
         
-        labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
-        accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, groups_amt)
+        # labels, means, covs, priors = cross_entropy_clustering(emb_np, n_clusters=n_clusters, n_iters=100)
+        # accuracy, best_perm, pred_groups = compute_best_accuracy(true_labels, labels, groups_amt)
 
         labelsHBD, embedding_umap = umap_hdbscan_cluster(emb_np, n_components=2, min_cluster_size=2, min_samples=2)
         accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, groups_amt)
@@ -241,12 +246,12 @@ if __name__ == "__main__":
         # print(f"true labels:    {true_labels}")
         # print(f"gussed labels:  {pred_groups}")
         # print("Best clustering accuracy: {:.4f}".format(accuracy))
-        # print("Best clustering accuracyHBD: {:.4f}".format(accuracyHBD))
+        print("Best clustering accuracyHBD: {:.4f}".format(accuracyHBD))
         
         accuracyHBD_all.append(accuracyHBD)
         acc_avgHBD = sum(accuracyHBD_all) / len(accuracyHBD_all)
-        acc_all.append(accuracy)
-        acc_avg = sum(acc_all) / len(acc_all)
+        # acc_all.append(accuracy)
+        # acc_avg = sum(acc_all) / len(acc_all)
         # print("ACC AVERAGE: ")
         # print(acc_avg)
         print("ACCHBAD AVERAGE: ")
@@ -256,7 +261,7 @@ if __name__ == "__main__":
         input("Press Enter to continue...")
         
 
-    acc_avg = sum(acc_all) / len(acc_all)
+    acc_avg = sum(accuracyHBD_all) / len(accuracyHBD_all)
     print("ACC AVERAGE: ")
     print(acc_avg)
 

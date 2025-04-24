@@ -13,9 +13,9 @@ class GCNDataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        (positions, adjacency, edge_indices, _, _, _) = self.data[idx]
+        (positions, adjacency, edge_indices, group_amt) = self.data[idx]
         # Convert everything to tensors
-        ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False)
+        ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False, min_groups=group_amt)
         return (positions, adjacency, edge_indices, ego_index, pruned_adj, reachable)
 
 def collate_fn(batch):
@@ -44,7 +44,7 @@ def collate_fn(batch):
         adjacency_at_t = []
         adjacency_pruned_at_t = []
 
-        
+
         for b in range(B):
             # Get the edge-index for batch element b at timestamp t.
             # ee = ego_edge_indices[b][t]
@@ -89,7 +89,13 @@ if __name__ == '__main__':
     config.read('config.ini')
 
     # Create dataset
-    dataset = GCNDataset(str(config["dataset"]["dataset_val"]))
+
+    dir_path = str(config["dataset"]["dir_path"])
+    dataset_name = str(config["dataset"]["dataset_name"])
+    val_name="{}{}_val.pt".format(dir_path, dataset_name)
+
+
+    dataset = GCNDataset(val_name)
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn, shuffle=True)

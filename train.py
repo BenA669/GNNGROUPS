@@ -165,18 +165,20 @@ def main():
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    input_dim = int(config["model"]["input_dim"])
-    output_dim = int(config["model"]["output_dim"])
-    hidden_dim = int(config["model"]["hidden_dim"])
+    dir_path = str(config["dataset"]["dir_path"])
+    dataset_name = str(config["dataset"]["dataset_name"])
+    train_name="{}{}_train.pt".format(dir_path, dataset_name)
+    val_name="{}{}_val.pt".format(dir_path, dataset_name)
 
-    val_dataset = GCNDataset(str(config["dataset"]["dataset_val"]))
-    train_dataset = GCNDataset(str(config["dataset"]["dataset_train"]))
+    val_dataset = GCNDataset(val_name)
+    train_dataset = GCNDataset(train_name)
 
     batch_size = int(config["training"]["batch_size"])
     temp = float(config["training"]["temp"])
     lr = float(config["training"]["learning_rate"])
     epochs = int(config["training"]["epochs"])
-    model_name = config["training"]["model_name"]
+    model_name = config["training"]["model_name_pt"]
+    model_save = "{}{}".format(dir_path, model_name)
 
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -209,7 +211,7 @@ def main():
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), model_name)
+            torch.save(model.state_dict(), model_save)
             print("  [*] Model saved.")
     
     print("Training completed. Best val loss:", best_val_loss)

@@ -78,10 +78,10 @@ def collate_fn(batch):
     return {
         'positions': positions_batch,
         'adjacency': adjacency,
-        'ego_mask_batch': ego_mask_batch,
-        'big_batch_positions': big_batch_positions,
-        'big_batch_adjacency': big_batch_adjacency,
-        'big_batched_adjacency_pruned': big_batched_adjacency_pruned,
+        'ego_mask_batch': ego_mask_batch, # (batchsize, time_stamp, node_amt)
+        'big_batch_positions': big_batch_positions, # (time_stamp, node_amt*batchsize, 2)
+        'big_batch_adjacency': big_batch_adjacency, # (time_stamp, node_amt*batchsize, node_amt*batchsize)
+        'big_batched_adjacency_pruned': big_batched_adjacency_pruned, # (time_stamp, node_amt*batchsize, node_amt*batchsize)
         'ego_index_batch': ego_index_batch,
     }
 
@@ -103,5 +103,5 @@ if __name__ == '__main__':
 
     for batch_idx, batch in enumerate(dataloader):
         # print(batch['big_batched_adjacency_pruned'].shape)
-        print(batch['big_batch_positions'].shape)
+        print(batch['ego_mask_batch'].shape)
         break

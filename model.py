@@ -30,6 +30,81 @@ def tensor_to_edge_index(adj):
     edge_index = torch.stack([src, dst], dim=0)
     return edge_index
 
+class TrainOT(nn.Module):
+    def __init__(self, config):
+        super(TrainOT, self).__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.input_dim = int(config["model"]["input_dim"])
+        self.gcn_dim = int(config["model"]["gcn_dim"])
+        self.rel_dim = int(config["model"]["rel_dim"])
+        self.train_dim = int(config["model"]["train_dim"])
+        self.output_dim = int(config["model"]["output_dim"])
+        self.num_heads = int(config["model"]["num_heads"])
+
+        self.batches = int(config["training"]["batch_size"])
+        self.num_nodes = int(config["dataset"]["nodes"])
+
+        # GCN Layers
+        self.gcn1 = GCNConv(self.input_dim, self.gcn_dim)
+        self.gcn2 = GCNConv(self.gcn_dim, self.gcn_dim)
+
+        # Train
+        self.trainOT = torch.rand(self.train_dim, device=self.device)
+
+        # Query, Key, Value, Speak
+        self.query = nn.Linear(self.gcn_dim, self.rel_dim)
+        self.key = nn.Linear(self.train_dim, self.rel_dim)
+        self.value = nn.Linear(self.gcn_dim, self.train_dim)
+        self.speak = nn.Linear(self.train_dim, self.output_dim*self.num_nodes)
+
+    def forward(self, batch, timestep, trainOT):
+        if trainOT is None:
+            trainOT = torch.randn(self.train_dim, device=self.device)
+
+        # (Timestep, Nodes*Batch, 2) -> (Nodes*Batch, 2)
+        # (Timestep, Nodes*Batch, Nodes*Batch) -> (Nodes*Batch, Nodes*Batch)
+        # (Batch, Timestep, Node Amt) -> (Time, Batch*Nodes) -> (Batch*Nodes)
+        features = batch["big_batch_positions"][timestep]         
+        adjacency = batch["big_batched_adjacency_pruned"][timestep]        
+        ego_mask = batch['ego_mask_batch'].permute(1, 0, 2)[timestep].reshape(-1)
+
+        features_masked = features[ego_mask]
+        adjacency_masked = adjacency[ego_mask][:, ego_mask]
+        edge_index_masked = tensor_to_edge_index(adjacency_masked)
+
+        # GCN pass get embed for each node
+        gcn1_out = self.gcn1(features_masked, edge_index_masked)
+        relu1_out = torch.relu(gcn1_out)
+        gcn2_out = self.gcn2(relu1_out, edge_index_masked)
+
+        # Pass embed through query & value
+        query_out = self.query(gcn2_out) # (Node, rel_dim)
+        value_out = self.value(gcn2_out) # (Node, train_dm)
+
+        # Pass train through key
+        key_out = self.key(self.trainOT)
+
+        # Dot prod get relevancy (Node)
+        rel = torch.sigmoid((query_out @ key_out) / (self.rel_dim ** 0.5))
+
+        # multiply value * relevancy
+        # (Node) * (Node, train_dim) -> (Node, train_dim)
+        weighted_rel =  rel.unsqueeze(1) * value_out
+
+        # Add to Train
+        summed_idea = torch.sum(weighted_rel, dim=0)
+        new_trainOT = self.trainOT + summed_idea
+
+        # Pass Train though speak
+        speak_out = self.speak(new_trainOT)
+
+        # Output is X-dim embedding on each node
+        # (Batch, Node, Embedding)
+        out = speak_out.view(self.batches, -1, self.output_dim)
+        return out, new_trainOT
+    
+
 class LSTMGCN(nn.Module):
     def __init__(self, config):
         super(LSTMGCN, self).__init__()
@@ -218,13 +293,20 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    dataset = GCNDataset(str(config["dataset"]["dataset_val"]))
+    dir_path = str(config["dataset"]["dir_path"])
+    dataset_name = str(config["dataset"]["dataset_name"])
+    val_name="{}{}_val.pt".format(dir_path, dataset_name)
+
+    dataset = GCNDataset(val_name)
+
 
     batch_size = int(config["training"]["batch_size"])
+    time_steps = int(config["dataset"]["timesteps"])
 
     # Define the model
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = TemporalGCN(config).to(device)
+    # model = TemporalGCN(config).to(device)
+    model = TrainOT(config).to(device)
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
@@ -234,9 +316,10 @@ if __name__ == '__main__':
         ego_mask_batch = batch['ego_mask_batch']
         big_batch_positions = batch['big_batch_positions']
         big_batch_adjacency = batch['big_batch_adjacency']
+        
+        for time in range(time_steps):
+            emb = model(batch, time)
 
-        emb = model(batch)
+            print(emb.shape)
 
-        print(emb.shape)
-
-        break
+            exit()

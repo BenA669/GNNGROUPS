@@ -151,7 +151,7 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn, timesteps):
         # Accumulate loss across all timesteps
         trainOT_state = None
         for t in range(timesteps):
-            emb, trainOT_state = model(batch, t, trainOT_state)  # Get embeddings at timestep t
+            emb, trainOT_state = model(batch, t)  # Get embeddings at timestep t
             loss_t = infonce_loss_fn(emb, groups, mask=ego_mask)
             total_loss += loss_t
 

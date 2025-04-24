@@ -212,6 +212,8 @@ if __name__ == "__main__":
     dataset_name = str(config["dataset"]["dataset_name"])
     val_name="{}{}_val.pt".format(dir_path, dataset_name)
 
+    timesteps = int(config["dataset"]["timesteps"])
+
 
     dataset = GCNDataset(val_name)
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
@@ -226,7 +228,16 @@ if __name__ == "__main__":
         big_batch_adjacency = batch['big_batch_adjacency'][0]
         ego_index_batch = batch['ego_index_batch'][0]
 
-        emb = model(batch)
+        # emb = model(batch)
+
+        total_loss = 0.0
+        # Accumulate loss across all timesteps
+        trainOT_state = None
+        for t in range(timesteps):
+            ego_mask = ego_mask_batch[:, t, :]
+            emb, trainOT_state = model(batch, t, trainOT_state)  # Get embeddings at timestep t
+
+            
         emb_np = emb.cpu().detach().numpy().squeeze(0)[:, -1, :]
         emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()]
 

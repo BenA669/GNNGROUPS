@@ -1,4 +1,4 @@
-from model import TemporalGCN
+from model import TemporalGCN, TrainOT
 from torch import torch
 from makeEpisode import makeDatasetDynamicPerlin, getEgo
 from sklearn.cluster import KMeans
@@ -148,6 +148,7 @@ def umap_hdbscan_cluster(embeddings, n_components=2, min_cluster_size=5, min_sam
     embedding_umap = reducer.fit_transform(embeddings)
     
     # Apply HDBSCAN clustering on the UMAP-reduced embeddings
+    # print(embeddings.shape())
     clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples)
     cluster_labels = clusterer.fit_predict(embedding_umap)
     
@@ -191,10 +192,10 @@ def getModel(config):
     model_name = str(config["training"]["model_name_pt"])
     model_save = "{}{}".format(dir_path, model_name)
 
-    model = TemporalGCN(config).to(device)
+    model = TrainOT(config).to(device)
 
     # Good best model is 68 HBD acc and 71 CEC acc
-    model.load_state_dict(torch.load(model_save, map_location=device, weights_only=True))
+    model.load_state_dict(torch.load(model_save, map_location=device))
 
     model.eval()
     return model
@@ -243,8 +244,8 @@ if __name__ == "__main__":
         accuracyHBD, best_perm, pred_groups = compute_best_accuracy(true_labels, labelsHBD, groups_amt)
 
         
-        # print(f"true labels:    {true_labels}")
-        # print(f"gussed labels:  {pred_groups}")
+        print(f"true labels:    {true_labels}")
+        print(f"gussed labels:  {pred_groups}")
         # print("Best clustering accuracy: {:.4f}".format(accuracy))
         print("Best clustering accuracyHBD: {:.4f}".format(accuracyHBD))
         

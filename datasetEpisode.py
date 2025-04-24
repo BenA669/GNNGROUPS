@@ -13,10 +13,10 @@ class GCNDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        # (positions, adjacency, edge_indices, group_amt) = self.data[idx]
-        (positions, adjacency, edge_indices, _, _, _) = self.data[idx]
+        (positions, adjacency, edge_indices, group_amt) = self.data[idx]
+        # (positions, adjacency, edge_indices, _, _, _) = self.data[idx]
         # Convert everything to tensors
-        ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False, min_groups=4)
+        ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False, min_groups=group_amt)
         return (positions, adjacency, edge_indices, ego_index, pruned_adj, reachable)
 
 def collate_fn(batch):

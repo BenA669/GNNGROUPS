@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 import configparser
 import matplotlib.pyplot as plt
 import networkx as nx  # NEW IMPORT
+from train import InfoNCELoss
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -102,7 +103,7 @@ def hbdscan_cluster(embeddings, min_cluster_size=2, min_samples=2):
     return cluster_labels
 
 def umap_hdbscan_cluster(embeddings, n_components=2, min_cluster_size=5, min_samples=5):
-    reducer = UMAP(n_components=n_components, random_state=42)
+    reducer = UMAP(n_components=n_components)
     embedding_umap = reducer.fit_transform(embeddings)
     clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples)
     cluster_labels = clusterer.fit_predict(embedding_umap)
@@ -124,10 +125,15 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
     return best_accuracy, best_perm, best_map
 
 def getModel(config):
-    model_name = config["training"]["model_name"]
+    dir_path = str(config["dataset"]["dir_path"])
+    model_name = str(config["training"]["model_name_pt"])
+    model_save = "{}{}".format(dir_path, model_name)
+
     model = TemporalGCN(config).to(device)
-    checkpoint_path = model_name
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+
+    # Good best model is 68 HBD acc and 71 CEC acc
+    model.load_state_dict(torch.load(model_save, map_location=device, weights_only=True))
+
     model.eval()
     return model
 
@@ -138,8 +144,16 @@ if __name__ == "__main__":
     groups_amt = int(config["dataset"]["groups"])
     model = getModel(config)
 
-    dataset = GCNDataset(str(config["dataset"]["dataset_val"]))
+    dir_path = str(config["dataset"]["dir_path"])
+    dataset_name = str(config["dataset"]["dataset_name"])
+    val_name="{}{}_val.pt".format(dir_path, dataset_name)
+
+
+    dataset = GCNDataset(val_name)
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
+
+    temp = float(config["training"]["temp"])
+    infonce_loss_fn = InfoNCELoss(temperature=temp)
 
     # Lists to store overall metrics from each sample
     acc_all = []             # clustering accuracy from cross-entropy clustering
@@ -149,14 +163,17 @@ if __name__ == "__main__":
     ego_positions_all = []   # (optional) ego node position at the final timestep
     ego_edge_connectivity_all = []  # edge connectivity within the ego network
     ego_edges_all = []       # NEW: total number of edges in the ego network
+    loss_all = []
 
     for batch_idx, batch in enumerate(tqdm(dataloader)):
         positions = batch['positions'][0]  # shape: [timestamp, node_amt, 3]
         adjacency = batch['adjacency'][0]
         ego_mask_batch = batch['ego_mask_batch'][0]
+        ego_mask = batch['ego_mask_batch'].any(dim=1)  # shape: [B, N]
         big_batch_positions = batch['big_batch_positions'][0]
         big_batch_adjacency = batch['big_batch_adjacency'][0]
         ego_index_batch = batch['ego_index_batch'][0]
+        groups = batch['positions'][:, 0, :, 2]
 
         emb = model(batch)
         # Assuming emb is of shape [batch, timesteps, nodes, features]
@@ -175,6 +192,19 @@ if __name__ == "__main__":
         # UMAP + HDBSCAN clustering
         labelsHBD, embedding_umap = umap_hdbscan_cluster(emb_np, n_components=2, min_cluster_size=2, min_samples=2)
         accuracyHBD, best_perm, pred_groups_hbd = compute_best_accuracy(true_labels, labelsHBD, groups_amt)
+
+        # Compute loss
+        B, max_nodes, T, D = emb.shape
+        loss = 0.0
+        for t in range(T):
+            loss_t = infonce_loss_fn(emb[:, :, t, :], groups, mask=ego_mask)
+            loss += loss_t
+        loss = loss / T        
+
+        print("Loss: {}".format(loss))
+        
+        
+        loss_all.append(loss.item())
 
         print(f"true labels:    {true_labels}")
         print("Best clustering accuracy (HBD): {:.4f}".format(accuracyHBD))
@@ -223,41 +253,68 @@ if __name__ == "__main__":
     # Print overall average accuracy
     avg_acc_hbd = sum(accuracyHBD_all) / len(accuracyHBD_all)
     print("Overall HDBSCAN Clustering ACC AVERAGE:", avg_acc_hbd)
+    print("Loss Avg: {}".format(sum(loss_all)/len(loss_all)))
+
+
+    yDim = loss_all
+
+    
+    ego_degrees_all = np.array(ego_degrees_all)
+    ego_nodes_all = np.array(ego_nodes_all)
+    ego_edge_connectivity_all = np.array(ego_edge_connectivity_all)
+    ego_edges_all = np.array(ego_edges_all)
 
 
     plt.figure()
-    plt.scatter(ego_degrees_all, accuracyHBD_all, c='g')
+    plt.scatter(ego_degrees_all, yDim, c='g')
+    m, b = np.polyfit(ego_degrees_all, yDim, 1) 
+    plt.plot(ego_degrees_all, m*ego_degrees_all + b, color='red')
     plt.xlabel("Ego Node Degree (Number of Connections)")
     plt.ylabel("Clustering Accuracy (HDBSCAN)")
-    plt.title("HDBSCAN Accuracy vs Ego Node Degree")
+    # plt.title("HDBSCAN Accuracy vs Ego Node Degree")
+    plt.title("InfoNCE Loss vs Ego Node Degree")
     plt.grid(True)
-    plt.savefig("HDBSCAN Accuracy vs Ego Node Degree.png")
+    # plt.savefig("HDBSCAN Accuracy vs Ego Node Degree.png")
+    plt.savefig("InfoNCE vs Ego Node Degree.png")
+
     plt.show()
 
     plt.figure()
-    plt.scatter(ego_nodes_all, accuracyHBD_all, c='m')
+    plt.scatter(ego_nodes_all, yDim, c='m')
+    m, b = np.polyfit(ego_nodes_all, yDim, 1) 
+    plt.plot(ego_nodes_all, m*ego_nodes_all + b, color='red')
     plt.xlabel("Number of Nodes in Ego Network")
     plt.ylabel("HDBSCAN Accuracy (HDBSCAN)")
-    plt.title("HDBSCAN Accuracy vs Ego Network Size")
+    # plt.title("HDBSCAN Accuracy vs Ego Network Size")
+    plt.title("InfoNCE vs Number of Edges in Ego Network")
     plt.grid(True)
-    plt.savefig("HDBSCAN Accuracy vs Ego Network Size.png")
+    # plt.savefig("HDBSCAN Accuracy vs Ego Network Size.png")
+    plt.savefig("InfoNCE vs Ego Node Degree.png")
     plt.show()
 
     plt.figure()
-    plt.scatter(ego_edge_connectivity_all, accuracyHBD_all, c='c')
+    plt.scatter(ego_edge_connectivity_all, yDim, c='c')
+    m, b = np.polyfit(ego_edge_connectivity_all, yDim, 1) 
+    plt.plot(ego_edge_connectivity_all, m*ego_edge_connectivity_all + b, color='red')
     plt.xlabel("Ego Network Edge Connectivity")
     plt.ylabel("HDBSCAN Accuracy (HDBSCAN)")
-    plt.title("HDBSCAN Accuracy vs Ego Network Edge Connectivity")
+    # plt.title("HDBSCAN Accuracy vs Ego Network Edge Connectivity")
+    plt.title("InfoNCE vs Number of Edges in Ego Network")
     plt.grid(True)
-    plt.savefig("HDBSCAN Accuracy vs Ego Network Edge Connectivity.png")
+    # plt.savefig("HDBSCAN Accuracy vs Ego Network Edge Connectivity.png")
+    plt.savefig("InfoNCE vs Ego Node Degree.png")
     plt.show()
 
     # NEW: Plotting the number of edges in the ego network vs. HDBSCAN accuracy
     plt.figure()
-    plt.scatter(ego_edges_all, accuracyHBD_all, c='orange')
+    plt.scatter(ego_edges_all, yDim, c='orange')
+    m, b = np.polyfit(ego_edges_all, yDim, 1) 
+    plt.plot(ego_edges_all, m*ego_edges_all + b, color='red')
     plt.xlabel("Number of Edges in Ego Network")
     plt.ylabel("HDBSCAN Accuracy (HDBSCAN)")
-    plt.title("HDBSCAN Accuracy vs Number of Edges in Ego Network")
+    # plt.title("HDBSCAN Accuracy vs Number of Edges in Ego Network")
+    plt.title("InfoNCE vs Number of Edges in Ego Network")
     plt.grid(True)
-    plt.savefig("HDBSCAN Accuracy vs Number of Edges in Ego Network.png")
+    # plt.savefig("HDBSCAN Accuracy vs Number of Edges in Ego Network.png")
+    plt.savefig("InfoNCE vs Ego Node Degree.png")
     plt.show()

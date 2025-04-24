@@ -6,6 +6,7 @@ from model import TemporalGCN
 from datasetEpisode import GCNDataset, collate_fn
 import torch.nn.functional as F
 import configparser
+from tqdm import tqdm
 
 
 
@@ -107,7 +108,7 @@ def train_one_epoch_better(model, dataloader, optimizer, device, infonce_loss_fn
     model.train()
     epoch_loss=0.0
     print("Training epoch")
-    for batch_idx, batch in enumerate(dataloader):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         positions = batch['positions']
         groups = positions[:, 0, :, 2]
         ego_mask_batch = batch['ego_mask_batch'] # Shape: (Batch, Timestep, Node Amt)

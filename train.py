@@ -193,7 +193,7 @@ def main():
                             shuffle=False, 
                             collate_fn=collate_fn)
 
-    model = DynamicGraphNN(config=config).to(device)
+    model = TemporalGCN(config=config).to(device)
     
     # InfoNCE Loss
     infonce_loss_fn = InfoNCELoss(temperature=temp)

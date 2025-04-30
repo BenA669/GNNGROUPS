@@ -106,39 +106,44 @@ class TrainOT(nn.Module):
 
 class LSTMOnly(nn.Module):
     """
-    Baseline that models only temporal dynamics via LSTM on node features (e.g., positions).
+    Baseline that models only temporal dynamics via LSTM on node features.
     Input: batch dict with 'positions' and 'ego_mask_batch'.
-    Output: tensor of shape [B, N, T, output_dim].
+    Output: tensor of shape [B, N, T, output_dim], with inactive nodes zeroed.
     """
     def __init__(self, config):
         super().__init__()
-        self.device      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.input_dim   = int(config["model"]["input_dim"])    # e.g., 2 for (x,y)
-        self.hidden_dim  = int(config["model"]["hidden_dim"])
-        self.output_dim  = int(config["model"]["output_dim"])
-        self.num_timesteps = int(config["dataset"]["timesteps"])
-        self.num_nodes   = int(config["dataset"]["nodes"])
-        self.batch_size  = int(config["training"]["batch_size"])
+        self.device       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.input_dim    = int(config["model"]["input_dim"])
+        self.hidden_dim   = int(config["model"]["hidden_dim"])
+        self.output_dim   = int(config["model"]["output_dim"])
+        self.num_timesteps= int(config["dataset"]["timesteps"])
+        self.num_nodes    = int(config["dataset"]["nodes"])
+        self.batch_size   = int(config["training"]["batch_size"])
 
-        # LSTM processes each node's time series independently
         self.lstm = nn.LSTM(self.input_dim, self.hidden_dim, batch_first=True)
         self.fc   = nn.Linear(self.hidden_dim, self.output_dim)
 
     def forward(self, batch, eval=False):
         # positions: [B, T, N, D], ego_mask: [B, T, N]
         positions = batch['positions'][..., :self.input_dim].to(self.device)
-        ego_mask  = batch['ego_mask_batch'].to(self.device)
+        ego_mask  = batch['ego_mask_batch'].to(self.device)             # [B, T, N]
         B, T, N, D = positions.shape
 
-        # Rearrange to [B, N, T, D]
+        # reshape to [B*N, T, D] for LSTM
         feats = positions.permute(0,2,1,3).reshape(B * N, T, D)
-        # (We ignore masking in sequence modeling; masked timesteps can be zero-padded.)
 
-        # Pass through LSTM
-        lstm_out, _ = self.lstm(feats)                # [B*N, T, hidden_dim]
-        out = self.fc(lstm_out)                       # [B*N, T, output_dim]
-        out = out.view(B, N, T, self.output_dim)      # [B, N, T, output_dim]
+        # run LSTM + output projection
+        lstm_out, _ = self.lstm(feats)                                  # [B*N, T, hidden_dim]
+        out = self.fc(lstm_out)                                         # [B*N, T, output_dim]
+        out = out.view(B, N, T, self.output_dim)                        # [B, N, T, output_dim]
+
+        # now mask out inactive nodes/timesteps
+        # ego_mask: [B, T, N] -> [B, N, T, 1]
+        mask = ego_mask.permute(0,2,1).unsqueeze(-1).type_as(out)
+        out = out * mask                                                # zero where mask==0
+
         return out
+
 
 
 class GCNOnly(nn.Module):
@@ -340,36 +345,36 @@ class TemporalGCN(nn.Module):
         # -> softmaxed
 
         # ATTENTION ------
-        outputs = []
-        for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
-            # Add batch dimension
-            node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
-            # Compute Q, K, V representations
-            query = query_l(node_emb)
-            key   = key_l(node_emb)
-            value = value_l(node_emb)
-            # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
-            attn_out, _ = attn(query, key, value)
-            # Remove the extra batch dimension and collect the result
-            outputs.append(attn_out.squeeze(0))
-        # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
-        x_attn = torch.stack(outputs, dim=0)
+        # outputs = []
+        # for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
+        #     # Add batch dimension
+        #     node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
+        #     # Compute Q, K, V representations
+        #     query = query_l(node_emb)
+        #     key   = key_l(node_emb)
+        #     value = value_l(node_emb)
+        #     # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
+        #     attn_out, _ = attn(query, key, value)
+        #     # Remove the extra batch dimension and collect the result
+        #     outputs.append(attn_out.squeeze(0))
+        # # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
+        # x_attn = torch.stack(outputs, dim=0)
 
-        x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
+        # x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
         
-        return x_out
+        # return x_out
         # ATTENTION ------
 
         # LSTM -------
-        # lstm_out, (h_n, _) = self.lstm(x_placeholder)
+        lstm_out, (h_n, _) = self.lstm(x_placeholder)
 
-        # # Reshape to [B, max_nodes, T, hidden_dim]
-        # embeddings = lstm_out.view(B, max_nodes, num_timesteps, self.hidden_dim)
+        # Reshape to [B, max_nodes, T, hidden_dim]
+        embeddings = lstm_out.view(B, max_nodes, num_timesteps, self.hidden_dim)
 
-        # embeddings = torch.relu(self.fc1(embeddings))
-        # embeddings = self.fc2(embeddings)  # [B, max_nodes, T, output_dim]
+        embeddings = torch.relu(self.fc1(embeddings))
+        embeddings = self.fc2(embeddings)  # [B, max_nodes, T, output_dim]
 
-        # return embeddings
+        return embeddings
         # LSTM -------
         
         # attn_scores = self.attention(lstm_out)  # (B*num_nodes, T, 1)

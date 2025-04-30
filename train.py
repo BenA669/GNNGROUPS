@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import TemporalGCN, GCNOnly, LSTMOnly
+from model import TemporalGCN, GCNOnly, LSTMOnly, DynamicGraphNN
 from datasetEpisode import GCNDataset, collate_fn
 import torch.nn.functional as F
 import configparser
@@ -193,7 +193,7 @@ def main():
                             shuffle=False, 
                             collate_fn=collate_fn)
 
-    model = LSTMOnly(config=config).to(device)
+    model = DynamicGraphNN(config=config).to(device)
     
     # InfoNCE Loss
     infonce_loss_fn = InfoNCELoss(temperature=temp)

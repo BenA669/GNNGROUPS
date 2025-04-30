@@ -16,7 +16,7 @@ class GCNDataset(Dataset):
         #(positions, adjacency, edge_indices, group_amt) = self.data[idx]
         (positions, adjacency, edge_indices, _, _, _) = self.data[idx]
         # Convert everything to tensors
-        ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False, min_groups=group_amt)
+        ego_index, pruned_adj, reachable = getEgo(positions, adjacency, union=False, min_groups=4)
         return (positions, adjacency, edge_indices, ego_index, pruned_adj, reachable)
 
 def collate_fn(batch):

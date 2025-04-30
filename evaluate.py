@@ -192,7 +192,7 @@ def getModel(config):
     model_name = str(config["training"]["model_name_pt"])
     model_save = "{}{}".format(dir_path, model_name)
 
-    model = TrainOT(config).to(device)
+    model = TemporalGCN(config).to(device)
 
     # Good best model is 68 HBD acc and 71 CEC acc
     model.load_state_dict(torch.load(model_save, map_location=device))
@@ -228,13 +228,13 @@ if __name__ == "__main__":
         big_batch_adjacency = batch['big_batch_adjacency'][0]
         ego_index_batch = batch['ego_index_batch'][0]
 
-        # emb = model(batch)
+        emb = model(batch)
 
         total_loss = 0.0
         # Accumulate loss across all timesteps
-        trainOT_state = None
-        for t in range(timesteps):
-            emb, trainOT_state = model(batch, t, trainOT_state)  # Get embeddings at timestep t
+        # trainOT_state = None
+        # for t in range(timesteps):
+        #     emb, trainOT_state = model(batch, t, trainOT_state)  # Get embeddings at timestep t
 
             
         emb_np = emb.cpu().detach().numpy().squeeze(0)

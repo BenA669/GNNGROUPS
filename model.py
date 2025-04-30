@@ -103,135 +103,143 @@ class TrainOT(nn.Module):
         # (Batch, Node, Embedding)
         out = speak_out.view(self.batches, -1, self.output_dim)
         return out, new_trainOT
-    
+
 class LSTMOnly(nn.Module):
     """
-    A purely temporal model: runs an LSTM over each node's feature‐sequence, 
-    then projects the last hidden state to your output_dim.
+    Baseline that models only temporal dynamics via LSTM on node features (e.g., positions).
+    Input: batch dict with 'positions' and 'ego_mask_batch'.
+    Output: tensor of shape [B, N, T, output_dim].
     """
     def __init__(self, config):
-        super(LSTMOnly, self).__init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        super().__init__()
+        self.device      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.input_dim   = int(config["model"]["input_dim"])    # e.g., 2 for (x,y)
+        self.hidden_dim  = int(config["model"]["hidden_dim"])
+        self.output_dim  = int(config["model"]["output_dim"])
+        self.num_timesteps = int(config["dataset"]["timesteps"])
+        self.num_nodes   = int(config["dataset"]["nodes"])
+        self.batch_size  = int(config["training"]["batch_size"])
 
-        self.input_dim = int(config["model"]["input_dim"])
-        self.hidden_dim = int(config["model"]["hidden_dim"])
-        self.output_dim = int(config["model"]["output_dim"])
-        self.num_nodes = int(config["dataset"]["nodes"])
-        self.batches   = int(config["training"]["batch_size"])
-
-        # LSTM treats (batch*nodes) as batch, sequence length = timesteps
+        # LSTM processes each node's time series independently
         self.lstm = nn.LSTM(self.input_dim, self.hidden_dim, batch_first=True)
         self.fc   = nn.Linear(self.hidden_dim, self.output_dim)
 
-    def forward(self, batch):
-        # big_batch_positions: [T, B*N, input_dim]
-        x = batch["big_batch_positions"]
-        T, BN, _ = x.shape
+    def forward(self, batch, eval=False):
+        # positions: [B, T, N, D], ego_mask: [B, T, N]
+        positions = batch['positions'][..., :self.input_dim].to(self.device)
+        ego_mask  = batch['ego_mask_batch'].to(self.device)
+        B, T, N, D = positions.shape
 
-        # move to [B*N, T, input_dim]
-        x = x.permute(1, 0, 2).contiguous().to(self.device)
+        # Rearrange to [B, N, T, D]
+        feats = positions.permute(0,2,1,3).reshape(B * N, T, D)
+        # (We ignore masking in sequence modeling; masked timesteps can be zero-padded.)
 
-        # run LSTM
-        out, (h_n, _) = self.lstm(x)          # out: [B*N, T, hidden_dim]; h_n: [1, B*N, hidden_dim]
-        last_h       = h_n.squeeze(0)         # [B*N, hidden_dim]
-
-        # project to output per node
-        y = self.fc(last_h)                   # [B*N, output_dim]
-        return y.view(self.batches, self.num_nodes, self.output_dim)
+        # Pass through LSTM
+        lstm_out, _ = self.lstm(feats)                # [B*N, T, hidden_dim]
+        out = self.fc(lstm_out)                       # [B*N, T, output_dim]
+        out = out.view(B, N, T, self.output_dim)      # [B, N, T, output_dim]
+        return out
 
 
 class GCNOnly(nn.Module):
     """
-    A purely spatial model: for each time‐step, run two GCN layers + MLP on the masked graph.
+    Baseline that applies a static GCN at each time slice independently.
+    Input: batch dict with 'big_batch_positions', 'big_batched_adjacency_pruned', 'ego_mask_batch'.
+    Output: tensor of shape [B, N, T, output_dim].
     """
     def __init__(self, config):
-        super(GCNOnly, self).__init__()
-        self.device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        super().__init__()
+        self.device      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.input_dim   = int(config["model"]["input_dim"])
+        self.hidden_dim  = int(config["model"]["hidden_dim"])
+        self.output_dim  = int(config["model"]["output_dim"])
+        self.num_timesteps = int(config["dataset"]["timesteps"])
+        self.num_nodes   = int(config["dataset"]["nodes"])
+        self.batch_size  = int(config["training"]["batch_size"])
 
-        self.input_dim  = int(config["model"]["input_dim"])
-        self.hidden_dim = int(config["model"]["hidden_dim"])
-        self.output_dim = int(config["model"]["output_dim"])
-        self.num_nodes  = int(config["dataset"]["nodes"])
-        self.batches    = int(config["training"]["batch_size"])
-
-        self.gcn1 = GCNConv(self.input_dim,  self.hidden_dim)
+        self.gcn1 = GCNConv(self.input_dim, self.hidden_dim)
         self.gcn2 = GCNConv(self.hidden_dim, self.hidden_dim)
         self.fc   = nn.Linear(self.hidden_dim, self.output_dim)
 
-    def forward(self, batch, timestep):
-        # extract masked features & adjacency
-        feat  = batch["big_batch_positions"][timestep]
-        adj   = batch["big_batched_adjacency_pruned"][timestep]
-        mask  = batch["ego_mask_batch"].permute(1,0,2)[timestep].reshape(-1)
+    def forward(self, batch, eval=False):
+        x  = batch['big_batch_positions'].to(self.device)       # [T, B*N, D]
+        A  = batch['big_batched_adjacency_pruned'].to(self.device)  # [T, B*N, B*N]
+        mask = batch['ego_mask_batch'].permute(1,0,2).reshape(self.num_timesteps, -1).to(self.device)
+        B = batch['ego_mask_batch'].shape[0]
+        N = self.num_nodes
 
-        fm = feat[mask]
-        am = adj[mask][:, mask]
-        ei = tensor_to_edge_index(am).to(self.device)
+        outs = []
+        for t in range(self.num_timesteps):
+            feats_t = x[t]                                  # [B*N, D]
+            m_t     = mask[t]                               # [B*N]
+            # Mask features and adjacency
+            idx     = m_t.nonzero(as_tuple=False).squeeze()
+            feats_m = feats_t[idx]
+            A_m     = A[t][idx][:, idx]
+            edges   = tensor_to_edge_index(A_m)
 
-        x = F.relu(self.gcn1(fm, ei))
-        x = F.relu(self.gcn2(x, ei))
-        x = self.fc(x)
+            h1 = torch.relu(self.gcn1(feats_m, edges))
+            h2 = torch.relu(self.gcn2(h1, edges))
+            out_feats = self.fc(h2)                         # [num_active, output_dim]
 
-        return x.view(self.batches, self.num_nodes, self.output_dim)
+            # Scatter back into placeholder
+            placeholder = torch.zeros(B * N, self.output_dim, device=self.device)
+            placeholder[idx] = out_feats
+            outs.append(placeholder.unsqueeze(0))          # [1, B*N, out_dim]
+
+        h_stack = torch.cat(outs, dim=0)                   # [T, B*N, out_dim]
+        h_stack = h_stack.view(self.num_timesteps, B, N, self.output_dim)
+        return h_stack.permute(1,2,0,3)                    # [B, N, T, out_dim]
 
 
 class DynamicGraphNN(nn.Module):
     """
-    A simple dynamic‐graph model: at each t, run a GCN on that snapshot,
-    then feed its node embeddings into a node‐wise GRU.  At the end,
-    project each node's final GRU state to output_dim.
+    Baseline that evolves node embeddings over time via GCN + GRUCell.
+    Input: same batch dict as for GCNOnly.
+    Output: tensor of shape [B, N, T, output_dim].
     """
     def __init__(self, config):
-        super(DynamicGraphNN, self).__init__()
-        self.device        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        self.input_dim     = int(config["model"]["input_dim"])
-        self.gcn_hidden    = int(config["model"]["hidden_dim"])
-        self.rnn_hidden    = int(config["model"]["hidden_dim_2"])
-        self.output_dim    = int(config["model"]["output_dim"])
-        self.num_nodes     = int(config["dataset"]["nodes"])
-        self.batches       = int(config["training"]["batch_size"])
+        super().__init__()
+        self.device      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.input_dim   = int(config["model"]["input_dim"])
+        self.hidden_dim  = int(config["model"]["hidden_dim"])
+        self.output_dim  = int(config["model"]["output_dim"])
         self.num_timesteps = int(config["dataset"]["timesteps"])
+        self.num_nodes   = int(config["dataset"]["nodes"])
+        self.batch_size  = int(config["training"]["batch_size"])
 
-        self.gcn = GCNConv(self.input_dim, self.gcn_hidden)
-        self.rnn = nn.GRU(self.gcn_hidden, self.rnn_hidden)
-        self.fc  = nn.Linear(self.rnn_hidden, self.output_dim)
+        self.gcn      = GCNConv(self.input_dim, self.hidden_dim)
+        self.gru_cell = nn.GRUCell(self.hidden_dim, self.hidden_dim)
+        self.fc       = nn.Linear(self.hidden_dim, self.output_dim)
 
-    def forward(self, batch):
-        # sequences
-        X = batch["big_batch_positions"]            # [T, B*N, input_dim]
-        A = batch["big_batched_adjacency_pruned"]   # [T, B*N, B*N]
-        M = batch["ego_mask_batch"].permute(1,0,2)  # [T, B, N] -> we'll flatten
+    def forward(self, batch, eval=False):
+        x    = batch['big_batch_positions'].to(self.device)    # [T, B*N, D]
+        A    = batch['big_batched_adjacency_pruned'].to(self.device)
+        mask = batch['ego_mask_batch'].permute(1,0,2).reshape(self.num_timesteps, -1).to(self.device)
+        B = batch['ego_mask_batch'].shape[0]
+        N = self.num_nodes
 
-        T, BN, _ = X.shape
-        # prepare a single hidden per node across all time
-        h = torch.zeros(1, BN, self.rnn_hidden, device=self.device)
+        # Initialize hidden state for all nodes
+        h_t = torch.zeros(B * N, self.hidden_dim, device=self.device)
+        seq = []
 
-        for t in range(T):
-            x_t    = X[t]                  # [B*N, input_dim]
-            mask_t = M[t].reshape(-1)      # [B*N]
-            adj_t  = A[t]                  # [B*N, B*N]
+        for t in range(self.num_timesteps):
+            feats_t = x[t]                                # [B*N, D]
+            m_t     = mask[t].nonzero(as_tuple=False).squeeze()
+            fm      = feats_t[m_t]
+            Am      = A[t][m_t][:, m_t]
+            edges   = tensor_to_edge_index(Am)
 
-            # mask and GCN
-            xtm = x_t[mask_t]
-            atm = adj_t[mask_t][:, mask_t]
-            ei  = tensor_to_edge_index(atm).to(self.device)
+            gcn_out   = torch.relu(self.gcn(fm, edges))  # [num_active, hidden_dim]
+            h_prev    = h_t[m_t]                         # [num_active, hidden_dim]
+            h_new     = self.gru_cell(gcn_out, h_prev)   # [num_active, hidden_dim]
+            h_t[m_t]  = h_new                            # update only active nodes
+            seq.append(h_t.unsqueeze(0))                 # [1, B*N, hidden_dim]
 
-            g = F.relu(self.gcn(xtm, ei))  # [num_masked, gcn_hidden]
-
-            # pad back out
-            full = torch.zeros(BN, self.gcn_hidden, device=self.device)
-            idx  = torch.nonzero(mask_t).flatten().to(self.device)
-            full[idx] = g
-
-            # feed into GRU (seq_len=1)
-            out, h = self.rnn(full.unsqueeze(0), h)
-
-        # h: [1, B*N, rnn_hidden] -> node‐wise final states
-        h_final = h.squeeze(0)                  # [B*N, rnn_hidden]
-        y       = self.fc(h_final)              # [B*N, output_dim]
-        return y.view(self.batches, self.num_nodes, self.output_dim)
-
+        seq_stack = torch.cat(seq, dim=0)              # [T, B*N, hidden_dim]
+        seq_stack = seq_stack.view(self.num_timesteps, B, N, self.hidden_dim)
+        out = self.fc(seq_stack)                       # [T, B, N, output_dim]
+        return out.permute(1,2,0,3)                    # [B, N, T, output_dim]
 
 
 class TemporalGCN(nn.Module):
@@ -332,35 +340,37 @@ class TemporalGCN(nn.Module):
         # -> softmaxed
 
         # ATTENTION ------
-        # outputs = []
-        # for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
-        #     # Add batch dimension
-        #     node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
-        #     # Compute Q, K, V representations
-        #     query = query_l(node_emb)
-        #     key   = key_l(node_emb)
-        #     value = value_l(node_emb)
-        #     # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
-        #     attn_out, _ = attn(query, key, value)
-        #     # Remove the extra batch dimension and collect the result
-        #     outputs.append(attn_out.squeeze(0))
-        # # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
-        # x_attn = torch.stack(outputs, dim=0)
+        outputs = []
+        for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
+            # Add batch dimension
+            node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
+            # Compute Q, K, V representations
+            query = query_l(node_emb)
+            key   = key_l(node_emb)
+            value = value_l(node_emb)
+            # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
+            attn_out, _ = attn(query, key, value)
+            # Remove the extra batch dimension and collect the result
+            outputs.append(attn_out.squeeze(0))
+        # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
+        x_attn = torch.stack(outputs, dim=0)
 
-        # x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
+        x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
         
-        # return x_out
+        return x_out
         # ATTENTION ------
 
-        lstm_out, (h_n, _) = self.lstm(x_placeholder)
+        # LSTM -------
+        # lstm_out, (h_n, _) = self.lstm(x_placeholder)
 
-        # Reshape to [B, max_nodes, T, hidden_dim]
-        embeddings = lstm_out.view(B, max_nodes, num_timesteps, self.hidden_dim)
+        # # Reshape to [B, max_nodes, T, hidden_dim]
+        # embeddings = lstm_out.view(B, max_nodes, num_timesteps, self.hidden_dim)
 
-        embeddings = torch.relu(self.fc1(embeddings))
-        embeddings = self.fc2(embeddings)  # [B, max_nodes, T, output_dim]
+        # embeddings = torch.relu(self.fc1(embeddings))
+        # embeddings = self.fc2(embeddings)  # [B, max_nodes, T, output_dim]
 
-        return embeddings
+        # return embeddings
+        # LSTM -------
         
         # attn_scores = self.attention(lstm_out)  # (B*num_nodes, T, 1)
         # attn_scores = attn_scores.squeeze(-1)   # (B*num_nodes, T)

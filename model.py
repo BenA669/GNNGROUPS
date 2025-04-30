@@ -233,38 +233,6 @@ class DynamicGraphNN(nn.Module):
         return y.view(self.batches, self.num_nodes, self.output_dim)
 
 
-class LSTMGCN(nn.Module):
-    def __init__(self, config):
-        super(LSTMGCN, self).__init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.num_nodes = int(config["dataset"]["nodes"])
-        self.num_timesteps = int(config["dataset"]["timesteps"])
-
-        self.input_dim = int(config["model"]["input_dim"])
-        self.hidden_dim = int(config["model"]["hidden_dim"])
-        self.hidden_dim_2 = int(config["model"]["hidden_dim_2"])
-        self.output_dim = int(config["model"]["output_dim"])
-        self.num_heads = int(config["model"]["num_heads"])
-
-        self.batches = int(config["training"]["batch_size"])
-        self.max_nodes = self.batches * self.num_nodes
-
-        # GCN Layers
-        self.gcn1 = GCNConv(self.input_dim, self.hidden_dim)
-        self.gcn2 = GCNConv(self.input_dim, self.hidden_dim)
-
-        # LSTM Layer
-        self.lstm = nn.LSTM(self.hidden_dim, self.hidden_dim)
-
-        # FC Layers
-        self.fc1 = nn.Linear(self.hidden_dim, self.hidden_dim_2)
-        self.fc2 = nn.Linear(self.hidden_dim_2, self.hidden_dim)
-
-    def forward(self, batch):
-        ego_mask_b = batch["ego_mask_batch"]
-        positions_b = batch["big_batch_positions"]
-        num_timesteps = positions_b.shape[0]
-        return
 
 class TemporalGCN(nn.Module):
     def __init__(self, config):
@@ -288,7 +256,7 @@ class TemporalGCN(nn.Module):
         self.gcn2 = GCNConv(self.hidden_dim, self.hidden_dim)
         
         # LSTM for temporal dependencies
-        self.lstm = nn.LSTM(self.hidden_dim, self.output_dim)
+        self.lstm = nn.LSTM(self.hidden_dim, self.hidden_dim)
 
         self.multi_attention = nn.ModuleList([
             nn.MultiheadAttention(self.hidden_dim, self.num_heads, batch_first=True)
@@ -363,39 +331,36 @@ class TemporalGCN(nn.Module):
         # -> set forward entries to neg infinity  
         # -> softmaxed
 
-        outputs = []
-        for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
-            # Add batch dimension
-            node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
-            # Compute Q, K, V representations
-            query = query_l(node_emb)
-            key   = key_l(node_emb)
-            value = value_l(node_emb)
-            # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
-            attn_out, _ = attn(query, key, value)
-            # Remove the extra batch dimension and collect the result
-            outputs.append(attn_out.squeeze(0))
-        # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
-        x_attn = torch.stack(outputs, dim=0)
+        # ATTENTION ------
+        # outputs = []
+        # for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
+        #     # Add batch dimension
+        #     node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
+        #     # Compute Q, K, V representations
+        #     query = query_l(node_emb)
+        #     key   = key_l(node_emb)
+        #     value = value_l(node_emb)
+        #     # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
+        #     attn_out, _ = attn(query, key, value)
+        #     # Remove the extra batch dimension and collect the result
+        #     outputs.append(attn_out.squeeze(0))
+        # # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
+        # x_attn = torch.stack(outputs, dim=0)
 
-        ## FC 2
-        # fc_outputs = []
-        # for t in range(num_timesteps):
-        #     emb_t = x_attn[:, t, :] # (B*max_nodes, hidden_dim)
-        #     fc1_out = self.fc1(emb_t) # (B*max_nodes, hidden_dim_2)
-        #     fc2_out = self.fc2(fc1_out) # (B*max_nodes, output_dim)
-        #     fc_outputs.append(fc2_out)
-        # x_fc = torch.stack(fc_outputs, dim=1) # (B*max_nodes, T, output_dim)
-        # x_out = x_fc.view(B, max_nodes, self.num_timesteps, self.output_dim)
-        # return x_out
-
-        ## FC 2
-
-        x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
+        # x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
         
-        return x_out
+        # return x_out
+        # ATTENTION ------
 
-        # lstm_out, (h_n, _) = self.lstm(x_placeholder)
+        lstm_out, (h_n, _) = self.lstm(x_placeholder)
+
+        # Reshape to [B, max_nodes, T, hidden_dim]
+        embeddings = lstm_out.view(B, max_nodes, num_timesteps, self.hidden_dim)
+
+        embeddings = torch.relu(self.fc1(embeddings))
+        embeddings = self.fc2(embeddings)  # [B, max_nodes, T, output_dim]
+
+        return embeddings
         
         # attn_scores = self.attention(lstm_out)  # (B*num_nodes, T, 1)
         # attn_scores = attn_scores.squeeze(-1)   # (B*num_nodes, T)

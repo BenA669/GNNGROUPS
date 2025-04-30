@@ -104,6 +104,134 @@ class TrainOT(nn.Module):
         out = speak_out.view(self.batches, -1, self.output_dim)
         return out, new_trainOT
     
+class LSTMOnly(nn.Module):
+    """
+    A purely temporal model: runs an LSTM over each node's feature‐sequence, 
+    then projects the last hidden state to your output_dim.
+    """
+    def __init__(self, config):
+        super(LSTMOnly, self).__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.input_dim = int(config["model"]["input_dim"])
+        self.hidden_dim = int(config["model"]["hidden_dim"])
+        self.output_dim = int(config["model"]["output_dim"])
+        self.num_nodes = int(config["dataset"]["nodes"])
+        self.batches   = int(config["training"]["batch_size"])
+
+        # LSTM treats (batch*nodes) as batch, sequence length = timesteps
+        self.lstm = nn.LSTM(self.input_dim, self.hidden_dim, batch_first=True)
+        self.fc   = nn.Linear(self.hidden_dim, self.output_dim)
+
+    def forward(self, batch):
+        # big_batch_positions: [T, B*N, input_dim]
+        x = batch["big_batch_positions"]
+        T, BN, _ = x.shape
+
+        # move to [B*N, T, input_dim]
+        x = x.permute(1, 0, 2).contiguous().to(self.device)
+
+        # run LSTM
+        out, (h_n, _) = self.lstm(x)          # out: [B*N, T, hidden_dim]; h_n: [1, B*N, hidden_dim]
+        last_h       = h_n.squeeze(0)         # [B*N, hidden_dim]
+
+        # project to output per node
+        y = self.fc(last_h)                   # [B*N, output_dim]
+        return y.view(self.batches, self.num_nodes, self.output_dim)
+
+
+class GCNOnly(nn.Module):
+    """
+    A purely spatial model: for each time‐step, run two GCN layers + MLP on the masked graph.
+    """
+    def __init__(self, config):
+        super(GCNOnly, self).__init__()
+        self.device     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.input_dim  = int(config["model"]["input_dim"])
+        self.hidden_dim = int(config["model"]["hidden_dim"])
+        self.output_dim = int(config["model"]["output_dim"])
+        self.num_nodes  = int(config["dataset"]["nodes"])
+        self.batches    = int(config["training"]["batch_size"])
+
+        self.gcn1 = GCNConv(self.input_dim,  self.hidden_dim)
+        self.gcn2 = GCNConv(self.hidden_dim, self.hidden_dim)
+        self.fc   = nn.Linear(self.hidden_dim, self.output_dim)
+
+    def forward(self, batch, timestep):
+        # extract masked features & adjacency
+        feat  = batch["big_batch_positions"][timestep]
+        adj   = batch["big_batched_adjacency_pruned"][timestep]
+        mask  = batch["ego_mask_batch"].permute(1,0,2)[timestep].reshape(-1)
+
+        fm = feat[mask]
+        am = adj[mask][:, mask]
+        ei = tensor_to_edge_index(am).to(self.device)
+
+        x = F.relu(self.gcn1(fm, ei))
+        x = F.relu(self.gcn2(x, ei))
+        x = self.fc(x)
+
+        return x.view(self.batches, self.num_nodes, self.output_dim)
+
+
+class DynamicGraphNN(nn.Module):
+    """
+    A simple dynamic‐graph model: at each t, run a GCN on that snapshot,
+    then feed its node embeddings into a node‐wise GRU.  At the end,
+    project each node's final GRU state to output_dim.
+    """
+    def __init__(self, config):
+        super(DynamicGraphNN, self).__init__()
+        self.device        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.input_dim     = int(config["model"]["input_dim"])
+        self.gcn_hidden    = int(config["model"]["hidden_dim"])
+        self.rnn_hidden    = int(config["model"]["hidden_dim_2"])
+        self.output_dim    = int(config["model"]["output_dim"])
+        self.num_nodes     = int(config["dataset"]["nodes"])
+        self.batches       = int(config["training"]["batch_size"])
+        self.num_timesteps = int(config["dataset"]["timesteps"])
+
+        self.gcn = GCNConv(self.input_dim, self.gcn_hidden)
+        self.rnn = nn.GRU(self.gcn_hidden, self.rnn_hidden)
+        self.fc  = nn.Linear(self.rnn_hidden, self.output_dim)
+
+    def forward(self, batch):
+        # sequences
+        X = batch["big_batch_positions"]            # [T, B*N, input_dim]
+        A = batch["big_batched_adjacency_pruned"]   # [T, B*N, B*N]
+        M = batch["ego_mask_batch"].permute(1,0,2)  # [T, B, N] -> we'll flatten
+
+        T, BN, _ = X.shape
+        # prepare a single hidden per node across all time
+        h = torch.zeros(1, BN, self.rnn_hidden, device=self.device)
+
+        for t in range(T):
+            x_t    = X[t]                  # [B*N, input_dim]
+            mask_t = M[t].reshape(-1)      # [B*N]
+            adj_t  = A[t]                  # [B*N, B*N]
+
+            # mask and GCN
+            xtm = x_t[mask_t]
+            atm = adj_t[mask_t][:, mask_t]
+            ei  = tensor_to_edge_index(atm).to(self.device)
+
+            g = F.relu(self.gcn(xtm, ei))  # [num_masked, gcn_hidden]
+
+            # pad back out
+            full = torch.zeros(BN, self.gcn_hidden, device=self.device)
+            idx  = torch.nonzero(mask_t).flatten().to(self.device)
+            full[idx] = g
+
+            # feed into GRU (seq_len=1)
+            out, h = self.rnn(full.unsqueeze(0), h)
+
+        # h: [1, B*N, rnn_hidden] -> node‐wise final states
+        h_final = h.squeeze(0)                  # [B*N, rnn_hidden]
+        y       = self.fc(h_final)              # [B*N, output_dim]
+        return y.view(self.batches, self.num_nodes, self.output_dim)
+
 
 class LSTMGCN(nn.Module):
     def __init__(self, config):

@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence, pad_sequence
 import configparser
+import math
 
 def tensor_to_edge_index(adj):
     """
@@ -264,6 +265,8 @@ class TemporalGCN(nn.Module):
         self.batches = int(config["training"]["batch_size"])
         self.max_nodes = self.batches * self.num_nodes
         
+        self.register_buffer("pos_embed", self.get_sinusoidal_encoding(self.num_timesteps, self.hidden_dim))
+
         # Graph convolution layers
         self.gcn1 = GCNConv(self.input_dim, self.hidden_dim)
         self.gcn2 = GCNConv(self.hidden_dim, self.hidden_dim)
@@ -290,6 +293,15 @@ class TemporalGCN(nn.Module):
         # Fully connected output layer
         self.fc1 = nn.Linear(self.hidden_dim, self.hidden_dim_2)
         self.fc2 = nn.Linear(self.hidden_dim_2, self.output_dim)
+
+    def get_sinusoidal_encoding(self, timesteps, dim):
+        position = torch.arange(timesteps).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, dim, 2) * (-math.log(10000.0) / dim))
+        encoding = torch.zeros(timesteps, dim)
+        encoding[:, 0::2] = torch.sin(position * div_term)
+        encoding[:, 1::2] = torch.cos(position * div_term)
+        return encoding
+
         
     def forward(self, batch, eval=False):
         ego_mask = batch['ego_mask_batch'] # Shape: (Batch, Timestep, Node Amt)
@@ -337,6 +349,9 @@ class TemporalGCN(nn.Module):
         # Currently: [T, B * max_nodes, hidden_dim] -> reshape to (B*num_nodes, T, hidden_dim)
         x_placeholder = x_placeholder.transpose(0, 1)  # Now shape: (B * max_nodes, T, hidden_dim)
 
+        x_placeholder = x_placeholder + self.pos_embed.unsqueeze(0)  # add positional info
+
+
         # Each node embedding gets mul by matrix to get query and key vector
 
         # At each timestep, the node query is dot product by every other node key
@@ -345,36 +360,36 @@ class TemporalGCN(nn.Module):
         # -> softmaxed
 
         # ATTENTION ------
-        # outputs = []
-        # for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
-        #     # Add batch dimension
-        #     node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
-        #     # Compute Q, K, V representations
-        #     query = query_l(node_emb)
-        #     key   = key_l(node_emb)
-        #     value = value_l(node_emb)
-        #     # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
-        #     attn_out, _ = attn(query, key, value)
-        #     # Remove the extra batch dimension and collect the result
-        #     outputs.append(attn_out.squeeze(0))
-        # # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
-        # x_attn = torch.stack(outputs, dim=0)
+        outputs = []
+        for attn, query_l, value_l, key_l, node_emb in zip(self.multi_attention, self.query, self.value, self.key, x_placeholder):
+            # Add batch dimension
+            node_emb = node_emb.unsqueeze(0)  # Now shape: (1, T, hidden_dim)
+            # Compute Q, K, V representations
+            query = query_l(node_emb)
+            key   = key_l(node_emb)
+            value = value_l(node_emb)
+            # Apply multi-head attention; attn_out will be (1, T, hidden_dim)
+            attn_out, _ = attn(query, key, value)
+            # Remove the extra batch dimension and collect the result
+            outputs.append(attn_out.squeeze(0))
+        # Combine all outputs: resulting shape will be (B*max_nodes, T, hidden_dim)
+        x_attn = torch.stack(outputs, dim=0)
 
-        # x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
+        x_out = x_attn.view(B, max_nodes, self.num_timesteps, self.hidden_dim)
         
-        # return x_out
+        return x_out
         # ATTENTION ------
 
         # LSTM -------
-        lstm_out, (h_n, _) = self.lstm(x_placeholder)
+        # lstm_out, (h_n, _) = self.lstm(x_placeholder)
 
-        # Reshape to [B, max_nodes, T, hidden_dim]
-        embeddings = lstm_out.view(B, max_nodes, num_timesteps, self.hidden_dim)
+        # # Reshape to [B, max_nodes, T, hidden_dim]
+        # embeddings = lstm_out.view(B, max_nodes, num_timesteps, self.hidden_dim)
 
-        embeddings = torch.relu(self.fc1(embeddings))
-        embeddings = self.fc2(embeddings)  # [B, max_nodes, T, output_dim]
+        # embeddings = torch.relu(self.fc1(embeddings))
+        # embeddings = self.fc2(embeddings)  # [B, max_nodes, T, output_dim]
 
-        return embeddings
+        # return embeddings
         # LSTM -------
         
         # attn_scores = self.attention(lstm_out)  # (B*num_nodes, T, 1)
@@ -397,6 +412,83 @@ class TemporalGCN(nn.Module):
     
         
 
+    
+class TGATLayer(nn.Module):
+    def __init__(self, node_dim, time_dim, out_dim):
+        super().__init__()
+        self.node_dim = node_dim
+        self.time_dim = time_dim
+        self.out_dim = out_dim
+        self.total_dim = node_dim + time_dim
+
+        self.query = nn.Linear(self.total_dim, out_dim)
+        self.key   = nn.Linear(self.total_dim, out_dim)
+        self.value = nn.Linear(self.total_dim, out_dim)
+        self.out   = nn.Linear(out_dim, out_dim)
+
+    def forward(self, node_feats, time_feats):
+        xt = torch.cat([node_feats, time_feats], dim=-1)  # [N, D + T]
+        Q, K, V = self.query(xt), self.key(xt), self.value(xt)
+        scores = Q @ K.T / (self.out_dim ** 0.5)
+        attn = F.softmax(scores, dim=-1)
+        agg = attn @ V
+        return self.out(agg)
+
+class TGAT(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.input_dim  = int(config["model"]["input_dim"])
+        self.hidden_dim = int(config["model"]["hidden_dim"])
+        self.output_dim = int(config["model"]["output_dim"])
+        self.time_dim   = int(config["model"].get("time_dim", 16))
+        self.num_timesteps = int(config["dataset"]["timesteps"])
+        self.num_nodes  = int(config["dataset"]["nodes"])
+        self.batch_size = int(config["training"]["batch_size"])
+
+        self.gcn1 = GCNConv(self.input_dim, self.hidden_dim)
+        self.gcn2 = GCNConv(self.hidden_dim, self.hidden_dim)
+        self.time_proj = nn.Linear(1, self.time_dim)
+        self.tgat_layer = TGATLayer(self.hidden_dim, self.time_dim, self.hidden_dim)
+        self.fc = nn.Linear(self.hidden_dim, self.output_dim)
+
+    def forward(self, batch, eval=False):
+        x = batch['big_batch_positions'].to(self.device)
+        A = batch['big_batched_adjacency_pruned'].to(self.device)
+        mask = batch['ego_mask_batch'].permute(1, 0, 2).reshape(self.num_timesteps, -1).to(self.device)
+
+        B, N = batch['ego_mask_batch'].shape[0], self.num_nodes
+        outs = []
+
+        for t in range(self.num_timesteps):
+            xt = x[t]
+            At = A[t]
+            mt = mask[t].nonzero(as_tuple=False).squeeze()
+            if mt.numel() == 0:  # skip if no active nodes
+                outs.append(torch.zeros(B * N, self.output_dim, device=self.device).unsqueeze(0))
+                continue
+
+            xt_masked = xt[mt]
+            At_masked = At[mt][:, mt]
+            edge_index = torch.nonzero(At_masked, as_tuple=False).T
+
+            h = F.relu(self.gcn1(xt_masked, edge_index))
+            h = F.relu(self.gcn2(h, edge_index))
+
+            t_enc = torch.full((h.size(0), 1), float(t), device=self.device)
+            t_vec = torch.sin(self.time_proj(t_enc))
+
+            h_tgat = self.tgat_layer(h, t_vec)
+
+            out = self.fc(h_tgat)
+            full = torch.zeros(B * N, self.output_dim, device=self.device)
+            full[mt] = out
+            outs.append(full.unsqueeze(0))
+
+        out_stack = torch.cat(outs, dim=0)  # [T, B*N, output_dim]
+        return out_stack.view(self.num_timesteps, B, N, self.output_dim).permute(1, 2, 0, 3)  # [B, N, T, D]
+    
 if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')

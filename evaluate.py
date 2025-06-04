@@ -230,6 +230,8 @@ if __name__ == "__main__":
 
         emb = model(batch)
 
+        
+
         total_loss = 0.0
         # Accumulate loss across all timesteps
         # trainOT_state = None
@@ -238,7 +240,7 @@ if __name__ == "__main__":
 
             
         emb_np = emb.cpu().detach().numpy().squeeze(0)
-        emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()]
+        emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()][:, -1, :]
 
         group_ids = positions[-1, ego_mask_batch.any(dim=0).cpu(), 2].long()
         n_clusters = torch.unique(group_ids).size(0)
@@ -268,7 +270,7 @@ if __name__ == "__main__":
         print("ACCHBAD AVERAGE: ")
         print(acc_avgHBD)
 
-        plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_index_batch, pred_groups=pred_groups, ego_mask=ego_mask_batch, embed=emb_np)
+        # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_index_batch, pred_groups=pred_groups, ego_mask=ego_mask_batch, embed=emb_np)
         input("Press Enter to continue...")
         
 

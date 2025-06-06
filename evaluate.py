@@ -1,4 +1,4 @@
-from model import TemporalGCN, TrainOT
+from model import *
 from torch import torch
 from makeEpisode import makeDatasetDynamicPerlin, getEgo
 from sklearn.cluster import KMeans
@@ -192,7 +192,7 @@ def getModel(config):
     model_name = str(config["training"]["model_name_pt"])
     model_save = "{}{}".format(dir_path, model_name)
 
-    model = TemporalGCN(config).to(device)
+    model = AttentionGCNOld(config).to(device)
 
     # Good best model is 68 HBD acc and 71 CEC acc
     model.load_state_dict(torch.load(model_save, map_location=device))
@@ -232,6 +232,8 @@ if __name__ == "__main__":
 
         
 
+        
+
         total_loss = 0.0
         # Accumulate loss across all timesteps
         # trainOT_state = None
@@ -243,6 +245,7 @@ if __name__ == "__main__":
         emb_np = emb_np[ego_mask_batch.any(dim=0).cpu()][:, -1, :]
 
         group_ids = positions[-1, ego_mask_batch.any(dim=0).cpu(), 2].long()
+
         n_clusters = torch.unique(group_ids).size(0)
         if n_clusters == 1:
             continue
@@ -270,7 +273,7 @@ if __name__ == "__main__":
         print("ACCHBAD AVERAGE: ")
         print(acc_avgHBD)
 
-        # plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_index_batch, pred_groups=pred_groups, ego_mask=ego_mask_batch, embed=emb_np)
+        plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_index_batch, pred_groups=pred_groups, ego_mask=ego_mask_batch, embed=emb_np)
         input("Press Enter to continue...")
         
 

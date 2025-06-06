@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import TemporalGCN, GCNOnly, LSTMOnly, DynamicGraphNN, TGAT
+from model import *
 from datasetEpisode import GCNDataset, collate_fn
 import torch.nn.functional as F
 import configparser
@@ -98,7 +98,7 @@ class InfoNCELoss(nn.Module):
             total_anchors += valid.sum()
         
         if total_anchors == 0:
-            return torch.tensor(0.0, device=embeddings.device)
+            return torch.tensor(0.0, device=embeddings.device, requires_grad=True)
         
         loss = batch_loss / total_anchors
         return loss
@@ -193,7 +193,7 @@ def main():
                             shuffle=False, 
                             collate_fn=collate_fn)
 
-    model = TGAT(config=config).to(device)
+    model = AttentionGCNOld(config=config).to(device)
     
     # InfoNCE Loss
     infonce_loss_fn = InfoNCELoss(temperature=temp)

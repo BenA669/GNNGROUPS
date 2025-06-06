@@ -14,7 +14,7 @@ def plot_faster(all_positions_cpu, adjacency_dynamic_cpu, embed=None,
     
 
     if embed is not None:
-        tsne = TSNE(n_components=2, random_state=0)
+        tsne = TSNE(n_components=2, random_state=0, perplexity=5)
         X_embedded = tsne.fit_transform(embed)
 
         # Plot the embedded data

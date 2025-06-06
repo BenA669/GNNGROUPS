@@ -1,8 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from makeEpisode import getEgo
-import configparser
-
+from configReader import read_config
 
 class GCNDataset(Dataset):
     def __init__(self, data_path):
@@ -86,13 +85,12 @@ def collate_fn(batch):
     }
 
 if __name__ == '__main__':
-    config = configparser.ConfigParser()
-    config.read('config.ini')
+    model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
     # Create dataset
 
-    dir_path = str(config["dataset"]["dir_path"])
-    dataset_name = str(config["dataset"]["dataset_name"])
+    dir_path = str(dataset_cfg["dir_path"])
+    dataset_name = str(dataset_cfg["dataset_name"])
     val_name="{}{}_val.pt".format(dir_path, dataset_name)
 
 

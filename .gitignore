@@ -1,6 +1,7 @@
 venv/
 __pycache__/
-Datasets/
+Models_Datasets/
+archive/
 ./pyvenv.cfg
 pregenerated_graphs.pt
 pregenerated_graphs_validation.pt

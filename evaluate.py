@@ -10,7 +10,9 @@ import hdbscan
 from umap import UMAP
 from datasetEpisode import GCNDataset, collate_fn
 from torch.utils.data import DataLoader
-import configparser
+from configReader import read_config
+
+
 
 
 
@@ -187,14 +189,13 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
     return best_accuracy, best_perm, best_map
 
 
-def getModel(config):
-    dir_path = str(config["dataset"]["dir_path"])
-    model_name = str(config["training"]["model_name_pt"])
+def getModel(model_cfg, dataset_cfg, training_cfg):
+    dir_path = dataset_cfg["dir_path"]
+    model_name = training_cfg["model_name_pt"]
     model_save = "{}{}".format(dir_path, model_name)
 
     model = AttentionGCNOld(config).to(device)
 
-    # Good best model is 68 HBD acc and 71 CEC acc
     model.load_state_dict(torch.load(model_save, map_location=device))
 
     model.eval()
@@ -202,17 +203,16 @@ def getModel(config):
 
 
 if __name__ == "__main__":
-    config = configparser.ConfigParser()
-    config.read('config.ini')
+    model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
-    groups_amt = int(config["dataset"]["groups"])
-    model = getModel(config)
+    groups_amt = dataset_cfg["groups"]
+    model = getModel(model_cfg, dataset_cfg, training_cfg)
 
-    dir_path = str(config["dataset"]["dir_path"])
-    dataset_name = str(config["dataset"]["dataset_name"])
+    dir_path = dataset_cfg["dir_path"]
+    dataset_name = dataset_cfg["dataset_name"]
     val_name="{}{}_val.pt".format(dir_path, dataset_name)
 
-    timesteps = int(config["dataset"]["timesteps"])
+    timesteps = dataset_cfg["timesteps"]
 
 
     dataset = GCNDataset(val_name)
@@ -229,10 +229,6 @@ if __name__ == "__main__":
         ego_index_batch = batch['ego_index_batch'][0]
 
         emb = model(batch)
-
-        
-
-        
 
         total_loss = 0.0
         # Accumulate loss across all timesteps

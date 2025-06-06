@@ -15,8 +15,9 @@ def getModel(eval: bool=False):
         raise ImportError(f"Model class `{model_type}` not found in model.py")
 
     
-    model = ModelClass(model_cfg).to(device)
+    model = ModelClass(model_cfg["config"]).to(device)
 
+    
     if eval:
         dir_path   = dataset_cfg.get("dir_path", "")
         model_name = training_cfg.get("model_name_pt")

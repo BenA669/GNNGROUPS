@@ -1,36 +1,34 @@
 from makeEpisode import makeDatasetDynamicPerlin, getEgo
 import torch
 from tqdm import tqdm
-import configparser
+from configReader import read_config
+
+
 
 if __name__ == "__main__":
 
-    config = configparser.ConfigParser()
-    config.read('config.ini')
+    model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
     
-    time_steps = int(config["dataset"]["timesteps"])
-    group_amt = int(config["dataset"]["groups"])
-    mixed = bool(config["dataset"]["mixed"])
-    node_amt = int(config["dataset"]["nodes"])
+    time_steps = dataset_cfg["timesteps"]
+    group_amt = dataset_cfg["groups"]
+    mixed = dataset_cfg["mixed"]
+    node_amt = dataset_cfg["nodes"]
 
-    distance_threshold = int(config["dataset"]["distance_threshold"])
-    noise_scale = float(config["dataset"]["noise_scale"])      # frequency of the noise
-    noise_strength = float(config["dataset"]["noise_strength"])      # influence of the noise gradient
-    tilt_strength = float(config["dataset"]["tilt_strength"])     # constant bias per group
-    boundary = int(config["dataset"]["boundary"])
+    distance_threshold = dataset_cfg["distance_threshold"]
+    noise_scale = dataset_cfg["noise_scale"]      # frequency of the noise
+    noise_strength = dataset_cfg["noise_strength"]      # influence of the noise gradient
+    tilt_strength = dataset_cfg["tilt_strength"]     # constant bias per group
+    boundary =dataset_cfg["boundary"]
 
-    hops = int(config["dataset"]["hops"])
+    hops = dataset_cfg["hops"]
 
-    # train_name = str(config["dataset"]["dataset_train"])
-    # val_name = str(config["dataset"]["dataset_val"])
+    dir_path = dataset_cfg["dir_path"]
+    dataset_name = dataset_cfg["dataset_name"]
 
-    dir_path = str(config["dataset"]["dir_path"])
-    dataset_name = str(config["dataset"]["dataset_name"])
+    train_name=dataset_cfg["train_path"]
+    val_name=dataset_cfg["val_path"]
 
-    train_name="{}{}_train.pt".format(dir_path, dataset_name)
-    val_name="{}{}_val.pt".format(dir_path, dataset_name)
-
-    samples = int(config["dataset"]["samples"])
+    samples = dataset_cfg["samples"]
 
     test_data = []
     val_data = []
@@ -64,7 +62,6 @@ if __name__ == "__main__":
             torch.save(data, val_name)
             
     Gen(test_data, train=True)
-
     Gen(val_data, train=False)
 
 print("Finished generating and saving {} and {}".format(train_name, val_name))

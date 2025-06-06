@@ -5,7 +5,7 @@ import torch
 from noise import pnoise2
 from animate import plot_faster
 import time as time
-import configparser
+from configReader import read_config
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
     # (node_i, node_j) for all 1-entries
@@ -327,25 +327,24 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=
 
 if __name__ == '__main__':
 
-    config = configparser.ConfigParser()
-    config.read('config.ini')
+    model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
     
-    time_steps = int(config["dataset"]["timesteps"])
-    group_amt = int(config["dataset"]["groups"])
-    node_amt = int(config["dataset"]["nodes"])
+    time_steps = dataset_cfg["timesteps"]
+    group_amt = dataset_cfg["groups"]
+    node_amt = dataset_cfg["nodes"]
 
-    distance_threshold = int(config["dataset"]["distance_threshold"])
-    noise_scale = float(config["dataset"]["noise_scale"])      # frequency of the noise
-    noise_strength = float(config["dataset"]["noise_strength"])      # influence of the noise gradient
-    tilt_strength = float(config["dataset"]["tilt_strength"])     # constant bias per group
-    boundary = int(config["dataset"]["boundary"])
+    distance_threshold = dataset_cfg["distance_threshold"]
+    noise_scale =dataset_cfg["noise_scale"]      # frequency of the noise
+    noise_strength = dataset_cfg["noise_strength"]     # influence of the noise gradient
+    tilt_strength = dataset_cfg["tilt_strength"]   # constant bias per group
+    boundary = dataset_cfg["boundary"]
 
-    hops = int(config["dataset"]["hops"])
-    min_groups = int(config["dataset"]["min_groups"])
+    hops = dataset_cfg["hops"]
+    min_groups = dataset_cfg["min_groups"]
 
-    samples = int(config["dataset"]["samples"])
+    samples = dataset_cfg["samples"]
 
-    perlin_offset_amt = float(config["dataset"]["perlin_offset_amt"])
+    perlin_offset_amt = dataset_cfg["perlin_offset_amt"]
     
     all_positions_cpu, adjacency_dynamic_cpu, edge_indices, groups_r = makeDatasetDynamicPerlin(
         node_amt=node_amt,
@@ -364,4 +363,5 @@ if __name__ == '__main__':
     # ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False)
     ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=groups_r)
 
-    plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)
+    if training_cfg["demo"]:
+        plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)

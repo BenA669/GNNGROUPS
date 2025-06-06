@@ -54,5 +54,13 @@ def read_config(config_path: str = "config.ini"):
     dataset_cfg = _parse_section("dataset")   # e.g. nodes, timesteps, noise_scale, mixed, dir_path, etc. :contentReference[oaicite:1]{index=1}
     training_cfg = _parse_section("training") # e.g. batch_size, epochs, learning_rate, model_name_pt, etc. :contentReference[oaicite:2]{index=2}
 
+    dir_path     = str(dataset_cfg.get("dir_path", ""))
+    dataset_name = str(dataset_cfg.get("dataset_name", ""))
+
+    dataset_cfg["train_path"] = f"{dir_path}{dataset_name}_train.pt"
+    dataset_cfg["val_path"]   = f"{dir_path}{dataset_name}_val.pt"
+
+    model_cfg["config"] = config
+
     # 3) Return the three dicts
     return model_cfg, dataset_cfg, training_cfg

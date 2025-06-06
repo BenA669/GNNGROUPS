@@ -11,6 +11,7 @@ from umap import UMAP
 from datasetEpisode import GCNDataset, collate_fn
 from torch.utils.data import DataLoader
 from configReader import read_config
+from getModel import getModel
 
 
 
@@ -188,34 +189,15 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
             best_map  = mapped_pred
     return best_accuracy, best_perm, best_map
 
-
-def getModel(model_cfg, dataset_cfg, training_cfg):
-    dir_path = dataset_cfg["dir_path"]
-    model_name = training_cfg["model_name_pt"]
-    model_save = "{}{}".format(dir_path, model_name)
-
-    model = AttentionGCNOld(config).to(device)
-
-    model.load_state_dict(torch.load(model_save, map_location=device))
-
-    model.eval()
-    return model
-
-
 if __name__ == "__main__":
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
     groups_amt = dataset_cfg["groups"]
-    model = getModel(model_cfg, dataset_cfg, training_cfg)
-
-    dir_path = dataset_cfg["dir_path"]
-    dataset_name = dataset_cfg["dataset_name"]
-    val_name="{}{}_val.pt".format(dir_path, dataset_name)
+    model = getModel(eval=True)
 
     timesteps = dataset_cfg["timesteps"]
 
-
-    dataset = GCNDataset(val_name)
+    dataset = GCNDataset(dataset_cfg["val_path"])
     dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
 
     acc_all = []
@@ -269,8 +251,9 @@ if __name__ == "__main__":
         print("ACCHBAD AVERAGE: ")
         print(acc_avgHBD)
 
-        plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_index_batch, pred_groups=pred_groups, ego_mask=ego_mask_batch, embed=emb_np)
-        input("Press Enter to continue...")
+        if training_cfg["demo"] == True:
+            plot_faster(positions.cpu(), adjacency.cpu(),  ego_idx=ego_index_batch, pred_groups=pred_groups, ego_mask=ego_mask_batch, embed=emb_np)
+            input("Press Enter to continue...")
         
 
     acc_avg = sum(accuracyHBD_all) / len(accuracyHBD_all)

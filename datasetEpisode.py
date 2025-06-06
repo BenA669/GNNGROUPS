@@ -88,13 +88,7 @@ if __name__ == '__main__':
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
     # Create dataset
-
-    dir_path = str(dataset_cfg["dir_path"])
-    dataset_name = str(dataset_cfg["dataset_name"])
-    val_name="{}{}_val.pt".format(dir_path, dataset_name)
-
-
-    dataset = GCNDataset(val_name)
+    dataset = GCNDataset(dataset_cfg["val_path"])
 
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn, shuffle=True)

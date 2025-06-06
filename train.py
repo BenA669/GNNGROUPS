@@ -7,41 +7,19 @@ from datasetEpisode import GCNDataset, collate_fn
 import torch.nn.functional as F
 import configparser
 from tqdm import tqdm
-
-
+from configReader import read_config
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
-    # (node_i, node_j) for all 1-entries
     edge_index = adj_t.nonzero().t().contiguous()  # shape [2, E]
     return edge_index
 
 class InfoNCELoss(nn.Module):
     def __init__(self, temperature=0.1, reduction='mean'):
-        """
-        InfoNCE Loss for contrastive learning based on group labels.
-        
-        Args:
-            temperature (float): Temperature scaling factor.
-            reduction (str): Reduction mode. Currently only 'mean' is supported.
-        """
         super(InfoNCELoss, self).__init__()
         self.temperature = temperature
         self.reduction = reduction
 
     def forward(self, embeddings, groups, mask=None):
-        """
-        Compute the InfoNCE loss.
-
-        Args:
-            embeddings (torch.Tensor): Tensor of shape [B, N, D] where B is batch size,
-                N is number of nodes (or nodes in the ego network) and D is embedding dimension.
-            groups (torch.Tensor): Tensor of shape [B, N] containing group labels for each node.
-            mask (torch.Tensor, optional): Boolean tensor of shape [B, N] indicating which nodes
-                should be included in the loss computation. If None, all nodes are used.
-
-        Returns:
-            torch.Tensor: The computed InfoNCE loss (a scalar).
-        """
         batch_loss = 0.0
         total_anchors = 0
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -162,23 +140,25 @@ def validate_one_epoch(model, dataloader, device, infonce_loss_fn):
 
 
 
-def main():
-    config = configparser.ConfigParser()
-    config.read('config.ini')
+if __name__ == "__main__":
+    model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
-    dir_path = str(config["dataset"]["dir_path"])
-    dataset_name = str(config["dataset"]["dataset_name"])
-    train_name="{}{}_train.pt".format(dir_path, dataset_name)
-    val_name="{}{}_val.pt".format(dir_path, dataset_name)
+    print(dataset_cfg["dir_path"])     # → "./attention_4/"
+    print(dataset_cfg["dataset_name"]) # → "attn_4_BROKERNG"
 
-    val_dataset = GCNDataset(val_name)
-    train_dataset = GCNDataset(train_name)
+    print(dataset_cfg["train_path"])   # → "./attention_4/attn_4_BROKERNG_train.pt"
+    print(dataset_cfg["val_path"])     # → "./attention_4/attn_4_BROKERNG_val.pt"
 
-    batch_size = int(config["training"]["batch_size"])
-    temp = float(config["training"]["temp"])
-    lr = float(config["training"]["learning_rate"])
-    epochs = int(config["training"]["epochs"])
-    model_name = config["training"]["model_name_pt"]
+    dir_path = dataset_cfg["dir_path"]
+
+    val_dataset = GCNDataset(dataset_cfg["val_path"])
+    train_dataset = GCNDataset(dataset_cfg["train_path"])
+
+    batch_size = training_cfg["batch_size"]
+    temp = training_cfg["temp"]
+    lr = training_cfg["learning_rate"]
+    epochs = training_cfg["epochs"]
+    model_name = training_cfg["model_name_pt"]
     model_save = "{}{}".format(dir_path, model_name)
 
     
@@ -193,7 +173,7 @@ def main():
                             shuffle=False, 
                             collate_fn=collate_fn)
 
-    model = AttentionGCNOld(config=config).to(device)
+    model = getModel(eval=False)
     
     # InfoNCE Loss
     infonce_loss_fn = InfoNCELoss(temperature=temp)
@@ -216,7 +196,3 @@ def main():
             print("  [*] Model saved.")
     
     print("Training completed. Best val loss:", best_val_loss)
-
-
-if __name__ == "__main__":
-    main()

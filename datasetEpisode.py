@@ -72,8 +72,6 @@ def collate_fn(batch):
     big_batch_positions = torch.stack(big_batch_positions, dim=0).to(torch.device('cuda:0'))
     big_batch_adjacency = torch.stack(big_batch_adjacency, dim=0).to(torch.device('cuda:0'))
     big_batched_adjacency_pruned = torch.stack(big_batched_adjacency_pruned, dim=0).to(torch.device('cuda:0'))
-    # You can also stack or combine the other items if needed.
-    # For now, we'll return all components in a dictionary:
     return {
         'positions': positions_batch,
         'adjacency': adjacency,
@@ -94,6 +92,5 @@ if __name__ == '__main__':
     dataloader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn, shuffle=True)
 
     for batch_idx, batch in enumerate(dataloader):
-        # print(batch['big_batched_adjacency_pruned'].shape)
         print(batch['ego_mask_batch'].shape)
         break

@@ -57,27 +57,9 @@ def getData():
     return positions.to(device), adjacency.to(device), edge_indices, ego_idx, ego_mask.to(device), ego_positions.to(device)
 
 def cross_entropy_clustering(embeddings, n_clusters, n_iters=100):
-    """
-    Cluster the data using an EM algorithm on a Gaussian mixture model,
-    which effectively minimizes a cross entropy between the data and the
-    cluster distributions.
-    
-    Args:
-        embeddings (np.ndarray): Array of shape (n_samples, n_features).
-        n_clusters (int): The desired number of clusters.
-        n_iters (int): Number of EM iterations.
-    
-    Returns:
-        final_labels (np.ndarray): Cluster label for each sample.
-        means (np.ndarray): Final cluster means.
-        covariances (np.ndarray): Final cluster covariance matrices.
-        priors (np.ndarray): Final cluster priors.
-    """
     n_samples, n_features = embeddings.shape
 
-    # ---------------------------
-    # Initialization via KMeans
-    # ---------------------------
+
     kmeans = KMeans(n_clusters=n_clusters, random_state=42).fit(embeddings)
     labels = kmeans.labels_
     means = kmeans.cluster_centers_
@@ -85,13 +67,10 @@ def cross_entropy_clustering(embeddings, n_clusters, n_iters=100):
     priors = np.zeros(n_clusters)
     for k in range(n_clusters):
         cluster_data = embeddings[labels == k]
-        # Use np.cov with rowvar=False. Add a small regularization term to avoid singular matrices.
         covariances[k] = np.cov(cluster_data, rowvar=False) + 1e-6 * np.eye(n_features)
         priors[k] = cluster_data.shape[0] / n_samples
 
-    # ---------------------------
-    # EM iterations
-    # ---------------------------
+
     for i in range(n_iters):
         # E-step: compute responsibilities
         responsibilities = np.zeros((n_samples, n_clusters))
@@ -133,19 +112,6 @@ def hbdscan_cluster(embeddings, min_cluster_size=2, min_samples=2):
     return cluster_labels
 
 def umap_hdbscan_cluster(embeddings, n_components=2, min_cluster_size=5, min_samples=5):
-    """
-    First reduce the dimensionality of the embeddings using UMAP, then apply HDBSCAN clustering.
-
-    Args:
-        embeddings (np.ndarray): High-dimensional data array of shape (n_samples, n_features).
-        n_components (int): Number of dimensions for the UMAP embedding (typically 2 or 3).
-        min_cluster_size (int): The minimum size of clusters for HDBSCAN.
-        min_samples (int): The number of samples in a neighborhood for a point to be considered a core point in HDBSCAN.
-    
-    Returns:
-        cluster_labels (np.ndarray): Cluster labels from HDBSCAN. Noise points are labeled as -1.
-        embedding_umap (np.ndarray): The low-dimensional embedding of the data.
-    """
     # Reduce dimensionality with UMAP
     reducer = UMAP(n_components=n_components)
     embedding_umap = reducer.fit_transform(embeddings)
@@ -159,19 +125,6 @@ def umap_hdbscan_cluster(embeddings, n_components=2, min_cluster_size=5, min_sam
 
 
 def compute_best_accuracy(true_labels, pred_labels, n_clusters):
-    """
-    Given the ground truth labels and predicted labels, try all possible
-    permutations of cluster label mappings to determine the highest accuracy.
-
-    Args:
-        true_labels (np.ndarray): Array of shape (n_samples,) with the true labels.
-        pred_labels (np.ndarray): Array of shape (n_samples,) with the predicted cluster labels.
-        n_clusters (int): Number of clusters.
-        
-    Returns:
-        best_accuracy (float): Highest accuracy achieved with the best permutation.
-        best_perm (tuple): The permutation (mapping) of predicted labels that gave the best accuracy.
-    """
     best_accuracy = 0.0
     best_perm = None
     best_map = None

@@ -13,10 +13,6 @@ def adjacency_to_edge_index(adj_t: torch.Tensor):
     return edge_index
 
 def get_perlin_gradient(x, y, offset, noise_scale, eps, octaves, persistence, lacunarity):
-    """
-    Compute the gradient of a Perlin noise function at (x,y) with a given offset,
-    using central finite differences.
-    """
     n1 = pnoise2((x + eps + offset[0]) * noise_scale,
                  (y + offset[1]) * noise_scale,
                  octaves=octaves,
@@ -67,7 +63,7 @@ def makeDatasetDynamicPerlin(
         rng = torch.Generator(device=device)
         rng.manual_seed(torch.initial_seed())
 
-    # --- 1. Assign nodes to groups and set initial positions ---
+    # Assign nodes to groups and set initial positions ---
     # if mixed:
     #     rand_vals = torch.rand(node_amt, generator=rng, device=device)
     #     group_amt_r = torch.randint(2, group_amt+1, (1,), generator=rng, device=device).item()
@@ -84,7 +80,7 @@ def makeDatasetDynamicPerlin(
     groups = torch.bucketize(rand_vals, group_edges)  # each in [0, group_amt - 1]
 
 
-    # Use a random “seed” (group center) for each group.
+    # Use a random seed (group center) for each group.
     last_seen_seeds = torch.rand((group_amt, 2), device=device)  # shape: (group_amt, 2)
     nodes = torch.zeros((node_amt, 3), device=device)             # shape: (node_amt, 3)
     nodes[:, 2] = groups  # store group id in third column
@@ -102,10 +98,10 @@ def makeDatasetDynamicPerlin(
     all_positions = torch.zeros((time_steps, node_amt, 3), device=device)
     all_positions[0] = nodes
 
-    # --- 2. Set up Perlin noise parameters, group tilts, and group speeds ---
+    # Set up Perlin noise parameters, group tilts, and group speeds
     # Each group gets its own noise offset so that its noise field is different.
-    # In addition, each group is assigned a constant "tilt" direction.
-    # Also, assign each group a speed multiplier: 0.5 with 50% chance, or 1.0 with 50% chance.
+    # Each group is assigned a constant "tilt" direction.
+    # Assign each group a speed multiplier: 0.5 with 50% chance, or 1.0 with 50% chance.
     group_noise_offsets = []
     group_tilts = []
     group_speeds = []  # New: store speed multipliers per group.
@@ -125,7 +121,6 @@ def makeDatasetDynamicPerlin(
     adjacency_dynamic = []
     group_edge_amount = torch.zeros(group_amt)
 
-    # --- 3. Update node positions over time based on noise gradient, tilt, and group speed ---
     for t in range(time_steps):
         if t != 0:
             prev_positions = all_positions[t - 1].clone()
@@ -179,7 +174,6 @@ def makeDatasetDynamicPerlin(
                 group_noise_offsets[g] = (group_noise_offsets[g][0]+perlin_offset, group_noise_offsets[g][1]+perlin_offset)
             all_positions[t] = new_positions
 
-        # --- 5. For each time step, add dynamic (distance–based) connections ---
 
         positions_t = all_positions[t, :, :2]  # shape: (node_amt, 2)
         # Compute pairwise distances.
@@ -199,7 +193,6 @@ def makeDatasetDynamicPerlin(
 
         # print(group_edge_amount)
 
-        # Group inter edges amount: count edges that connect nodes in group g to nodes in other groups.
         for g in range(group_amt):
             group_indicies = (all_positions[t, :, 2] == g)
             non_group_indicies = (all_positions[t, :, 2] != g)
@@ -207,7 +200,6 @@ def makeDatasetDynamicPerlin(
 
     adjacency_dynamic = torch.stack(adjacency_dynamic, dim=0)
 
-    # Move to CPU for convenience.
     all_positions_cpu = all_positions.cpu()
     adjacency_dynamic_cpu = adjacency_dynamic.cpu()
 
@@ -221,40 +213,11 @@ def makeDatasetDynamicPerlin(
     return all_positions_cpu, adjacency_dynamic_cpu, edge_indices, group_amt
 
 def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=True):
-    """
-    Select an ego node whose dynamic network (up to `hop` hops) spans at least `min_groups`
-    distinct groups, and then return an ego network that prunes connections among nodes that are
-    exclusively in the outermost (max hop) layer. Also returns an EgoMask which is a boolean
-    tensor (time_steps, total_nodes) indicating for each time step which nodes (of the original
-    total nodes) are part of the ego network (i.e. have a direct dynamic connection to the ego).
-
-    Parameters:
-        all_positions_cpu (torch.Tensor): Tensor of shape (time_steps, node_amt, 3)
-            containing node positions (and group id in column 2) for each time step.
-        adjacency_dynamic_cpu (torch.Tensor): Tensor of shape (time_steps, node_amt, node_amt)
-            containing the dynamic (time-varying) adjacency matrices.
-        min_groups (int): Minimum number of distinct groups (including the ego's own group)
-            required in the ego network.
-        hop (int): Number of hops to expand from the ego node.
-    
-    Returns:
-        ego_idx (int): The index of the chosen ego node.
-        ego_positions (torch.Tensor): Positions tensor for the ego network,
-            of shape (time_steps, n_ego_nodes, 3).
-        ego_adjacency (torch.Tensor): Modified dynamic adjacency tensor for the ego network,
-            of shape (time_steps, n_ego_nodes, n_ego_nodes). For N-hop networks
-        ego_edge_indices (list): List of edge indices for each time step of the ego network.
-        EgoMask (torch.Tensor): Boolean mask (time_steps, total_nodes) indicating for each time
-            step which nodes (in the full graph) are in the ego network based on dynamic connectivity.
-    """
-
 
     time_steps, total_nodes, _ = all_positions_cpu.shape
 
-    # Build a static union graph over time (True if an edge ever exists).
     union_adj = (adjacency_dynamic_cpu.any(dim=0) > 0)
 
-    # Helper: Compute hop distances from the ego using BFS up to a maximum of 'hop'
     def get_hop_network_and_distances(ego_idx, max_hop, union=True):
         distances = torch.full((total_nodes,), -1, dtype=torch.int)
         distances[ego_idx] = 0
@@ -294,7 +257,6 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=
             current_distance += 1
         return distances
 
-    # --- Candidate Selection ---
     candidate_indices = list(range(total_nodes))
     random.shuffle(candidate_indices)
     chosen_idx = None

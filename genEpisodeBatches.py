@@ -36,11 +36,13 @@ if __name__ == "__main__":
     val_data = []
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    rng = torch.Generator(device=device)
-    rng.manual_seed(torch.initial_seed())
+    
 
     
     def Gen(data, train=True):
+        rng = torch.Generator(device=device)
+        rng.manual_seed(torch.initial_seed())
+        
         for _ in tqdm(range(samples)):
             positions, adjacency, edge_indices, groups = makeDatasetDynamicPerlin(
                 node_amt=node_amt,

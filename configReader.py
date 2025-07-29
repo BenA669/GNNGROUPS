@@ -40,6 +40,9 @@ def read_config(config_path: str = "config.ini"):
     dataset_cfg["train_path"] = f"{dir_path}{dataset_name}_train.pt"
     dataset_cfg["val_path"]   = f"{dir_path}{dataset_name}_val.pt"
 
+    dataset_cfg["adj_path"] = f"{dir_path}{dataset_name}_adj.pt"
+    dataset_cfg["pos_path"] = f"{dir_path}{dataset_name}_pos.pt"
+
     model_cfg["config"] = config
 
     return model_cfg, dataset_cfg, training_cfg

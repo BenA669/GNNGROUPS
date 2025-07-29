@@ -1,10 +1,10 @@
 import math
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GCNConv
-from datasetEpisode import GCNDataset, collate_fn
-from torch.utils.data import DataLoader
 from getModel import getModel
+from torch_geometric.nn import GCNConv
+from datasetEpisode import GCNDataset, collate_fn, oceanDataset
+from torch.utils.data import DataLoader
 from configReader import read_config
 
 class BaseModel(nn.Module):
@@ -15,7 +15,9 @@ class BaseModel(nn.Module):
 
         self.input_dim     = int(config["model"]["input_dim"])
         self.hidden_dim    = int(config["model"]["hidden_dim"])
+        self.hidden_dim_2  = int(config["model"]["hidden_dim_2"])
         self.output_dim    = int(config["model"]["output_dim"])
+        self.num_heads     = int(config["model"]["num_heads"])
         self.num_timesteps = int(config["dataset"]["timesteps"])
         self.num_nodes     = int(config["dataset"]["nodes"])
         self.batch_size    = int(config["training"]["batch_size"])
@@ -400,10 +402,53 @@ class AttentionGCN(BaseModel):
         return x_out
 
 
+class NaiveCloser(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)
+
+        self.num_timesteps = int(config["dataset"]["timesteps"])
+        self.num_nodes     = int(config["dataset"]["nodes"])
+    
+    def forward(self, batch, ping_i, pong_i, eval=False):
+       # batch : (pos, adj)
+        positions_b_t_n_xy, n_hop_adjacency_b_t_h_n_n = zip(*batch)
+
+        flat_pos_n_xy = torch.view(-1, self.num_nodes, 2)
+        print(flat_pos_n_xy.shape)
+        exit()
+
+        blocked_pos_t_n_xy = torch.block_diag(*positions_b_t_n_xy)
+        blocked_adj_t_h_n_n = torch.block_diag(*n_hop_adjacency_b_t_h_n_n)
+
+        
+        
+
+
+       
+
 if __name__ == '__main__':
 
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
+    pos_path = dataset_cfg["pos_path"]
+    adj_path = dataset_cfg["adj_path"]
+    dataset = oceanDataset(pos_path=pos_path, adj_path=adj_path)
+
+    batch_size = training_cfg["batch_size"]
+    dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
+
+    model = getModel(eval=False)
+
+    for batch_idx, batch in enumerate(dataloader):
+        model_out = model(batch, 0, 0, eval=True)
+        print(model_out.shape)  # Should be [B, N, T, D]
+
+    
+    exit()
+
+    
     dataset = GCNDataset(dataset_cfg["val_path"])
 
 

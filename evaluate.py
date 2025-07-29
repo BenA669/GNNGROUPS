@@ -1,4 +1,4 @@
-from model import *
+from GNNGROUPS.models import *
 from torch import torch
 from makeEpisode import makeDatasetDynamicPerlin, getEgo
 from sklearn.cluster import KMeans

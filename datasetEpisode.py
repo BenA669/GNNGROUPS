@@ -1,7 +1,25 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from makeEpisode import getEgo
 from configReader import read_config
+
+class oceanDataset(Dataset):
+    def __init__(self, pos_path, adj_path):
+        super().__init__()
+        self.data_pos = torch.load(pos_path, weights_only=True)
+        self.data_adj = torch.load(adj_path, weights_only=True)
+
+    def __len__(self):
+        return len(self.data_pos)
+    
+    def __getitem__(self, idx): 
+        (positions_t_n_xy, n_hop_adjacency_t_h_n_n) = self.data_pos[idx], self.data_adj[idx]
+
+        return (positions_t_n_xy, n_hop_adjacency_t_h_n_n)
+
+def ocean_collate_fn(batch):
+    positions_b_t_n_xy, n_hop_adjacency_b_t_h_n_n = zip(*batch)
+
+    
 
 class GCNDataset(Dataset):
     def __init__(self, data_path):
@@ -85,12 +103,36 @@ def collate_fn(batch):
 if __name__ == '__main__':
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
-    # Create dataset
-    dataset = GCNDataset(dataset_cfg["val_path"])
+    pos_path = dataset_cfg["dir_path"] + dataset_cfg["dataset_name"] + "_pos.pt"
+    adj_path = dataset_cfg["dir_path"] + dataset_cfg["dataset_name"] + "_adj.pt"
 
-    # Create DataLoader
-    dataloader = DataLoader(dataset, batch_size=4, collate_fn=collate_fn, shuffle=True)
+    dataset = oceanDataset(pos_path, adj_path)
 
+    batch_size = training_cfg["batch_size"]
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     for batch_idx, batch in enumerate(dataloader):
-        print(batch['ego_mask_batch'].shape)
-        break
+        print(batch[0].shape)
+        print(batch[1].shape)
+        print(len(batch))
+        print()
+    exit()
+
+#    # Create dataset
+#    dataset = GCNDataset(dataset_cfg["val_path"])
+#
+#    # Create DataLoader
+#    dataloader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, shuffle=True)
+#
+#    for batch_idx, batch in enumerate(dataloader):
+#        # print(batch['ego_mask_batch'].shape)
+#        # print(batch)
+#        for key, value in batch.items():
+#            print(key)
+#            print(type(value))
+#            if isinstance(value, tuple):
+#                print(value)
+#                continue
+#            print(value.shape)
+#            print()
+#        break
+#

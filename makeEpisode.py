@@ -1,18 +1,22 @@
 import random
+import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import math
 from noise import pnoise2
 from animate import plot_faster
+from pygameAnimate import animate
 import time as time
 from configReader import read_config
+from tqdm import tqdm
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
     # (node_i, node_j) for all 1-entries
     edge_index = adj_t.nonzero().t().contiguous()  # shape [2, E]
     return edge_index
 
-def get_perlin_gradient(x, y, offset, noise_scale, eps, octaves, persistence, lacunarity):
+def get_perlin_gradient(x, y, offset, noise_scale=1.0, eps=1e-3, octaves=1, persistence=0.5, lacunarity=2.0):
     n1 = pnoise2((x + eps + offset[0]) * noise_scale,
                  (y + offset[1]) * noise_scale,
                  octaves=octaves,
@@ -38,6 +42,82 @@ def get_perlin_gradient(x, y, offset, noise_scale, eps, octaves, persistence, la
     dy = (n3 - n4) / (2 * eps)
     
     return dx, dy
+
+model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def genDataset(node_amt             = dataset_cfg['nodes'],
+               group_amt            = dataset_cfg['groups'],
+               time_steps           = dataset_cfg['timesteps'],
+               boundary             = dataset_cfg['boundary'],
+               noise_strength       = dataset_cfg['noise_strength'],
+               noise_scale          = dataset_cfg['noise_scale'],
+               distance_threshold   = dataset_cfg['distance_threshold'],
+               nhops                = dataset_cfg['hops']
+               ):
+    
+    positions_t_n_xy = torch.zeros((time_steps, node_amt, 2))
+    adjacency_t_n_n  = torch.zeros((time_steps, node_amt, node_amt))
+    offsets_n_2 = torch.rand((node_amt, 2))*boundary*2-boundary
+    grad_intensity_n = torch.full((node_amt, ), 0.1)
+    
+    nodes_per_slice = math.ceil(math.sqrt(node_amt))
+    seed = torch.linspace(-boundary, boundary, nodes_per_slice)
+    inital_pos = torch.cartesian_prod(seed, seed)[:node_amt]
+    positions_t_n_xy[0, :, :] = inital_pos
+    adjacency_t_n_n[0] = torch.cdist(positions_t_n_xy[0, :, :].unsqueeze(0), 
+                                     positions_t_n_xy[0, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
+
+
+    for t in tqdm(range(1, time_steps)):
+        for n in range(node_amt):
+            x = positions_t_n_xy[t-1, n, 0]
+            y = positions_t_n_xy[t-1, n, 1]
+            
+            grad_x, grad_y = get_perlin_gradient(
+                x, y, offset=offsets_n_2[n], noise_scale=noise_scale
+            )            
+
+            new_post = [x + grad_x * noise_strength * grad_intensity_n[n], y + grad_y * noise_strength * grad_intensity_n[n]] 
+            if abs(grad_x)+abs(grad_y) < 0.1 or abs(new_post[0]) > boundary or abs(new_post[1]) > boundary:
+                offsets_n_2[n, 0] = random.uniform(-5000, 5000)
+                offsets_n_2[n, 1] = random.uniform(-5000, 5000)
+                grad_intensity_n[n] = 0.1
+            new_post[0] = max(-boundary, min(new_post[0], boundary))
+            new_post[1] = max(-boundary, min(new_post[1], boundary))
+
+            positions_t_n_xy[t, n, :] = torch.tensor(new_post)
+            grad_intensity_n[n] += 0.05
+            grad_intensity_n[n] = min(1, grad_intensity_n[n])
+        
+        adjacency_t_n_n[t] = torch.cdist(positions_t_n_xy[t, :, :].unsqueeze(0), 
+                                         positions_t_n_xy[t, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
+    
+    mask = torch.eye(node_amt, dtype=torch.bool).repeat(time_steps, 1, 1)
+    adjacency_t_n_n[mask] = 0 
+
+    # n_hop_adjacency = torch.linalg.matrix_power(adjacency_t_n_n, nhops)
+
+    n_hop_adjacency_t_h_n_n = torch.zeros((time_steps, nhops, node_amt, node_amt))
+    for hop in range(nhops):
+        if hop == 0:
+            n_hop_adjacency_t_h_n_n[:, hop] = adjacency_t_n_n
+        else:
+            n_hop_adjacency_t_h_n_n[:, hop] = torch.linalg.matrix_power(adjacency_t_n_n, hop + 1)
+
+
+    return positions_t_n_xy, n_hop_adjacency_t_h_n_n
+
+
+def pingpong(num_nodes, ping_i=None, pong_i=None):
+    if ping_i is None:
+        ping_i = torch.randint(0, num_nodes, (1,)).item()
+    
+    if pong_i is None:
+        while True:
+            pong_i = torch.randint(0, num_nodes, (1,)).item()
+            if pong_i != ping_i:
+                break
 
 
 def makeDatasetDynamicPerlin(
@@ -289,41 +369,50 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=
 
 if __name__ == '__main__':
 
-    model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
+    pos, adj = genDataset()
+    ego_idx = None
+    # plot_faster(pos, adj)
+    animate(pos, adj, 
+            num_timesteps=pos.shape[0], 
+            num_nodes=pos.shape[1], 
+            scale=50, 
+            ego_idx=ego_idx,
+            nhops=2)
+    # model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
     
-    time_steps = dataset_cfg["timesteps"]
-    group_amt = dataset_cfg["groups"]
-    node_amt = dataset_cfg["nodes"]
+    # time_steps = dataset_cfg["timesteps"]
+    # group_amt = dataset_cfg["groups"]
+    # node_amt = dataset_cfg["nodes"]
 
-    distance_threshold = dataset_cfg["distance_threshold"]
-    noise_scale =dataset_cfg["noise_scale"]      # frequency of the noise
-    noise_strength = dataset_cfg["noise_strength"]     # influence of the noise gradient
-    tilt_strength = dataset_cfg["tilt_strength"]   # constant bias per group
-    boundary = dataset_cfg["boundary"]
+    # distance_threshold = dataset_cfg["distance_threshold"]
+    # noise_scale =dataset_cfg["noise_scale"]      # frequency of the noise
+    # noise_strength = dataset_cfg["noise_strength"]     # influence of the noise gradient
+    # tilt_strength = dataset_cfg["tilt_strength"]   # constant bias per group
+    # boundary = dataset_cfg["boundary"]
 
-    hops = dataset_cfg["hops"]
-    min_groups = dataset_cfg["min_groups"]
+    # hops = dataset_cfg["hops"]
+    # min_groups = dataset_cfg["min_groups"]
 
-    samples = dataset_cfg["samples"]
+    # samples = dataset_cfg["samples"]
 
-    perlin_offset_amt = dataset_cfg["perlin_offset_amt"]
+    # perlin_offset_amt = dataset_cfg["perlin_offset_amt"]
     
-    all_positions_cpu, adjacency_dynamic_cpu, edge_indices, groups_r = makeDatasetDynamicPerlin(
-        node_amt=node_amt,
-        group_amt=group_amt,
-        time_steps=time_steps,
-        distance_threshold=distance_threshold,
-        noise_scale=noise_scale,
-        noise_strength=noise_strength,
-        tilt_strength=tilt_strength,
-        boundary=boundary,
-        perlin_offset=perlin_offset_amt,
-        mixed=False
+    # all_positions_cpu, adjacency_dynamic_cpu, edge_indices, groups_r = makeDatasetDynamicPerlin(
+    #     node_amt=node_amt,
+    #     group_amt=group_amt,
+    #     time_steps=time_steps,
+    #     distance_threshold=distance_threshold,
+    #     noise_scale=noise_scale,
+    #     noise_strength=noise_strength,
+    #     tilt_strength=tilt_strength,
+    #     boundary=boundary,
+    #     perlin_offset=perlin_offset_amt,
+    #     mixed=False
         
-    )
+    # )
 
-    # ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False)
-    ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=groups_r)
+    # # ego_index, ego_positions, ego_adjacency, ego_edge_indices, EgoMask = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=2, union=False)
+    # ego_index, pruned_adj, reachable = getEgo(all_positions_cpu, adjacency_dynamic_cpu, hop=hops, union=False, min_groups=groups_r)
 
-    if training_cfg["demo"]:
-        plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)
+    # if training_cfg["demo"]:
+    #     plot_faster(all_positions_cpu, adjacency_dynamic_cpu, ego_idx=ego_index, ego_mask=reachable)

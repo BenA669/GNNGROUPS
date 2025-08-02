@@ -65,9 +65,8 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
     seed = torch.linspace(-boundary, boundary, nodes_per_slice)
     inital_pos = torch.cartesian_prod(seed, seed)[:node_amt]
     positions_t_n_xy[0, :, :] = inital_pos
-    adjacency_t_n_n[0] = torch.cdist(positions_t_n_xy[0, :, :].unsqueeze(0), 
+    adjacency_t_n_n[0, :, :] = torch.cdist(positions_t_n_xy[0, :, :].unsqueeze(0), 
                                      positions_t_n_xy[0, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
-
 
     for t in tqdm(range(1, time_steps)):
         for n in range(node_amt):
@@ -92,11 +91,13 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
         
         adjacency_t_n_n[t] = torch.cdist(positions_t_n_xy[t, :, :].unsqueeze(0), 
                                          positions_t_n_xy[t, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
-    
-    mask = torch.eye(node_amt, dtype=torch.bool).repeat(time_steps, 1, 1)
-    adjacency_t_n_n[mask] = 0 
+        
 
-    # n_hop_adjacency = torch.linalg.matrix_power(adjacency_t_n_n, nhops)
+    # Zero out self connections
+    # mask = torch.eye(node_amt, dtype=torch.bool).repeat(time_steps, 1, 1)
+    # adjacency_t_n_n[mask] = 0 
+
+    # n_hop_adjacency = torch.linalg.matriux_power(adjacency_t_n_n, nhops)
 
     n_hop_adjacency_t_h_n_n = torch.zeros((time_steps, nhops, node_amt, node_amt))
     for hop in range(nhops):
@@ -105,9 +106,45 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
         else:
             n_hop_adjacency_t_h_n_n[:, hop] = torch.linalg.matrix_power(adjacency_t_n_n, hop + 1)
 
-
     return positions_t_n_xy, n_hop_adjacency_t_h_n_n
 
+def getSubnet(positions_t_n_xy, n_hop_adjacency_t_h_n_n, nhops, ego_idx, timestep):
+    adjacency_n_n = n_hop_adjacency_t_h_n_n[timestep, 0]
+    positions_n_xy = positions_t_n_xy[timestep]
+
+    # Get masks for core and all indices
+    all_indices_n_mask =  (n_hop_adjacency_t_h_n_n[timestep, :nhops, ego_idx, :] > 0).any(dim=0)
+    all_indices_n_mask[ego_idx] = True
+    core_indices_n_mask = n_hop_adjacency_t_h_n_n[timestep, :nhops-1, ego_idx, :].any(dim=0) > 0
+    core_indices_n_mask[ego_idx] = True
+    core_indices_n_mask = core_indices_n_mask[all_indices_n_mask] 
+
+    # Keep nodes in nhop then mask out adj rows for edge node rows
+    adj_subnet_sn_sn = adjacency_n_n[all_indices_n_mask][:, all_indices_n_mask]
+    adj_subnet_sn_sn[~core_indices_n_mask][:, ~core_indices_n_mask] = 0
+
+    # Restore self loops
+    adj_subnet_sn_sn[torch.eye(adj_subnet_sn_sn.size(0)) == 1] = 1
+    pos_subnet_sn_xy = positions_n_xy[all_indices_n_mask]
+
+    mask_indices_n_global = torch.where(all_indices_n_mask)[0]
+
+    return pos_subnet_sn_xy, adj_subnet_sn_sn, mask_indices_n_global
+
+    
+def getSubnetBatched(
+        positions_b_t_n_xy,
+        n_hop_adjacency_b_t_h_n_n,
+        nhops,
+        ego_idx,
+        timestep
+):
+    B, T, N, _ = positions_b_t_n_xy.shape
+
+    adjacency_b_n_n = n_hop_adjacency_b_t_h_n_n[:, timestep, :, :, :]
+    positions_b_n_xy = positions_b_t_n_xy[:, timestep, :]
+
+    return False
 
 def pingpong(num_nodes, ping_i=None, pong_i=None):
     if ping_i is None:
@@ -370,13 +407,12 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=
 if __name__ == '__main__':
 
     pos, adj = genDataset()
-    ego_idx = None
+
     # plot_faster(pos, adj)
     animate(pos, adj, 
             num_timesteps=pos.shape[0], 
             num_nodes=pos.shape[1], 
             scale=50, 
-            ego_idx=ego_idx,
             nhops=2)
     # model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
     

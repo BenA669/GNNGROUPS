@@ -6,6 +6,9 @@ from torch_geometric.nn import GCNConv
 from datasetEpisode import GCNDataset, collate_fn, oceanDataset
 from torch.utils.data import DataLoader
 from configReader import read_config
+from makeEpisode import getSubnet
+from tqdm import tqdm
+from pygameAnimate import init_animate, step_animate
 
 class BaseModel(nn.Module):
     def __init__(self, config):
@@ -410,40 +413,126 @@ class NaiveCloser(nn.Module):
 
         self.num_timesteps = int(config["dataset"]["timesteps"])
         self.num_nodes     = int(config["dataset"]["nodes"])
+        self.hops          = int(config["dataset"]["hops"])
+        self.batch_size    = int(config["training"]["batch_size"])
     
-    def forward(self, batch, ping_i, pong_i, eval=False):
-       # batch : (pos, adj)
-        positions_b_t_n_xy, n_hop_adjacency_b_t_h_n_n = zip(*batch)
+    def forward(self, pos_subnet_sn_xy, adj_subnet_sn_sn, ping_xy, pong_xy, eval=False):
+        diff = pos_subnet_sn_xy - pong_xy
+        dist2 = (diff * diff).sum(dim=1)
+        # if dist2.numel() == 0:
+        #     return torch.tensor(-1, dtype=torch.long, device=pos.device)
+        nearest_node_idx = dist2.argmin()
+        return nearest_node_idx
 
-        flat_pos_n_xy = torch.view(-1, self.num_nodes, 2)
-        print(flat_pos_n_xy.shape)
+
         exit()
 
-        blocked_pos_t_n_xy = torch.block_diag(*positions_b_t_n_xy)
-        blocked_adj_t_h_n_n = torch.block_diag(*n_hop_adjacency_b_t_h_n_n)
-
-        
-        
 
 
-       
+        # batch : (pos, adj)
+        print(len(batch))
+        positions_b_t_n_xy, n_hop_adjacency_b_t_h_n_n = batch
+
+        flat_pos_t_bn_xy = positions_b_t_n_xy.view(self.num_timesteps, self.num_nodes*self.batch_size, 2)
+        # flat_adj_h_t_bn_bn = n_hop_adjacency_b_t_h_n_n.view(self.hops, 
+        #                                                     self.num_timesteps, 
+        #                                                     self.batch_size, 
+        #                                                     self.num_nodes, 
+        #                                                     self.num_nodes)
+
+        flat_adj_htb_n_n = n_hop_adjacency_b_t_h_n_n.view(-1, self.num_nodes, self.num_nodes)
+        print(flat_pos_t_bn_xy.shape)
+        print(flat_adj_htb_n_n.shape)
+        torch.block_diag(*flat_adj_htb_n_n)
+        exit()
+
+        # blocked_adj_t_h_n_n = \
+        blocked_adj_h_t_bn_bn = torch.empty(self.hops, self.num_timesteps, self.num_nodes*self.batch_size, self.num_nodes*self.batch_size)
+        for t in flat_adj_h_t_b_n_n:
+            for h in t:
+                torch.block_diag(*h)
+
+        # torch.block_diag(*n_hop_adjacency_b_t_h_n_n)
 
 if __name__ == '__main__':
 
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
+
+    nnodes = dataset_cfg["nodes"]
+    timesteps = dataset_cfg["timesteps"]
+    nhops = dataset_cfg["hops"]
 
     pos_path = dataset_cfg["pos_path"]
     adj_path = dataset_cfg["adj_path"]
     dataset = oceanDataset(pos_path=pos_path, adj_path=adj_path)
 
     batch_size = training_cfg["batch_size"]
-    dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = getModel(eval=False)
 
     for batch_idx, batch in enumerate(dataloader):
-        model_out = model(batch, 0, 0, eval=True)
-        print(model_out.shape)  # Should be [B, N, T, D]
+        positions_t_n_xy = batch[0].squeeze()
+        n_hop_adjacency_t_h_n_n = batch[1].squeeze()
+
+        ping_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
+        pong_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
+        current_egoidx = ping_init_b
+
+
+        screen, colors, t, center_x, center_y, clock, recrdr, draw_queue_n_xyc, once = init_animate() 
+
+        for ts in tqdm(range(timesteps-1)):
+            ping_xy = positions_t_n_xy[ts, ping_init_b]
+            pong_xy = positions_t_n_xy[ts, pong_init_b]
+            pos_subnet_sn_xy, adj_subnet_sn_sn, mask_indices_n_global = getSubnet(positions_t_n_xy, 
+                      n_hop_adjacency_t_h_n_n,
+                      nhops,
+                      current_egoidx,
+                      ts
+                      )
+            
+            model_out = model(pos_subnet_sn_xy, adj_subnet_sn_sn, ping_xy, pong_xy)
+            print(model_out.shape)
+            # model_out_global = mask_indices_n_global[model_out.item()]
+            idx = int(model_out.item())
+            model_out_global = mask_indices_n_global[idx]
+            t = step_animate(
+                screen,
+                colors,
+                t,
+                center_x,
+                center_y,
+                clock,
+                recrdr,
+                draw_queue_n_xyc,
+                once,
+                positions_t_n_xy,
+                n_hop_adjacency_t_h_n_n,
+                ego_idx=current_egoidx,
+                model_pick_i=model_out_global,
+                ping_i=ping_init_b,
+                pong_i=pong_init_b
+
+            )
+            current_egoidx=model_out_global.item()
+            if (model_out_global == pong_init_b):
+                print("PONG REACHED")
+                ping_init_b = pong_init_b
+                ping_xy = pong_xy
+                
+                pong_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
+                pong_xy = positions_t_n_xy[ts, pong_init_b]
+
+            else:
+                print(f"model out: {model_out_global}")
+                print(f"pong_i: {pong_init_b}")
+        recrdr.save()
+        print("awwws")
+        exit()
+
+        # model_out = model(batch, 0, 0, eval=True)
+        # print(model_out.shape)  # Should be [B, N, T, D]
 
     
     exit()

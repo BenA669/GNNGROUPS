@@ -1,21 +1,15 @@
 import torch
 from configReader import read_config
-import model as model_module  
+import importlib
 
 def getModel(eval: bool=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
-    model_type = model_cfg.get("model_type")
-    if model_type is None:
-        raise KeyError("`model_type` not found in [model] section of config.ini")
-    try:
-        ModelClass = getattr(model_module, model_type)
-    except AttributeError:
-        raise ImportError(f"Model class `{model_type}` not found in model.py")
+    module = importlib.import_module("models")
+    class_type = getattr(module, "NaiveCloser")
 
-    
-    model = ModelClass(model_cfg["config"]).to(device)
+    model = class_type(model_cfg["config"]).to(device)
 
     
     if eval:

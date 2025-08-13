@@ -7,7 +7,8 @@ def getModel(eval: bool=False):
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
 
     module = importlib.import_module("models")
-    class_type = getattr(module, "NaiveCloser")
+    model_type = model_cfg['model_type']
+    class_type = getattr(module, model_type)
 
     model = class_type(model_cfg["config"]).to(device)
 

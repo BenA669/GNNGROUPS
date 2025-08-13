@@ -9,23 +9,20 @@ if __name__ == "__main__":
 
     time_steps = dataset_cfg["timesteps"]
     node_amt = dataset_cfg["nodes"]
-    nhops = dataset_cfg["hops"]
 
     samples = training_cfg["samples"]
 
     dataset_pos = torch.empty(samples, time_steps, node_amt, 2)
-    dataset_adj = torch.empty(samples, time_steps, nhops, node_amt, node_amt)
+
+    save_file = dataset_cfg["dir_path"] + dataset_cfg["dataset_name"]
+    print("Saving positions to {}".format(save_file + "_pos.pt"))
 
     for i in tqdm(range(samples)):
-        positions_t_n_xy, n_hop_adjacency_t_h_n_n = genDataset()
+        positions_t_n_xy = genDataset()
         dataset_pos[i] = positions_t_n_xy
-        dataset_adj[i] = n_hop_adjacency_t_h_n_n
     
-    save_file = dataset_cfg["dir_path"] + dataset_cfg["dataset_name"]
     torch.save(dataset_pos, save_file + "_pos.pt")
     print("Saved positions to {}".format(save_file + "_pos.pt"))
-    torch.save(dataset_adj, save_file + "_adj.pt")
-    print("Saved adjacency to {}".format(save_file + "_adj.pt"))
 
 
 

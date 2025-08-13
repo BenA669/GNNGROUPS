@@ -6,7 +6,7 @@ import torch
 import math
 from noise import pnoise2
 from animate import plot_faster
-from pygameAnimate import animate
+from pygameAnimate import animate, animatev2
 import time as time
 from configReader import read_config
 from tqdm import tqdm
@@ -53,11 +53,11 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
                noise_strength       = dataset_cfg['noise_strength'],
                noise_scale          = dataset_cfg['noise_scale'],
                distance_threshold   = dataset_cfg['distance_threshold'],
-               nhops                = dataset_cfg['hops']
+               nhops                = dataset_cfg['hops'],
                ):
     
     positions_t_n_xy = torch.zeros((time_steps, node_amt, 2))
-    adjacency_t_n_n  = torch.zeros((time_steps, node_amt, node_amt))
+    # adjacency_t_n_n  = torch.zeros((time_steps, node_amt, node_amt))
     offsets_n_2 = torch.rand((node_amt, 2))*boundary*2-boundary
     grad_intensity_n = torch.full((node_amt, ), 0.1)
     
@@ -65,8 +65,8 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
     seed = torch.linspace(-boundary, boundary, nodes_per_slice)
     inital_pos = torch.cartesian_prod(seed, seed)[:node_amt]
     positions_t_n_xy[0, :, :] = inital_pos
-    adjacency_t_n_n[0, :, :] = torch.cdist(positions_t_n_xy[0, :, :].unsqueeze(0), 
-                                     positions_t_n_xy[0, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
+    # adjacency_t_n_n[0, :, :] = torch.cdist(positions_t_n_xy[0, :, :].unsqueeze(0), 
+                                    #  positions_t_n_xy[0, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
 
     for t in tqdm(range(1, time_steps)):
         for n in range(node_amt):
@@ -89,8 +89,8 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
             grad_intensity_n[n] += 0.05
             grad_intensity_n[n] = min(1, grad_intensity_n[n])
         
-        adjacency_t_n_n[t] = torch.cdist(positions_t_n_xy[t, :, :].unsqueeze(0), 
-                                         positions_t_n_xy[t, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
+        # adjacency_t_n_n[t] = torch.cdist(positions_t_n_xy[t, :, :].unsqueeze(0), 
+        #                                  positions_t_n_xy[t, :, :].unsqueeze(0)).squeeze(0) < distance_threshold
         
 
     # Zero out self connections
@@ -99,14 +99,48 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
 
     # n_hop_adjacency = torch.linalg.matriux_power(adjacency_t_n_n, nhops)
 
-    n_hop_adjacency_t_h_n_n = torch.zeros((time_steps, nhops, node_amt, node_amt))
-    for hop in range(nhops):
-        if hop == 0:
-            n_hop_adjacency_t_h_n_n[:, hop] = adjacency_t_n_n
-        else:
-            n_hop_adjacency_t_h_n_n[:, hop] = torch.linalg.matrix_power(adjacency_t_n_n, hop + 1)
+    # n_hop_adjacency_t_h_n_n = torch.zeros((time_steps, nhops, node_amt, node_amt))
+    # for hop in range(nhops):
+    #     if hop == 0:
+    #         n_hop_adjacency_t_h_n_n[:, hop] = adjacency_t_n_n
+    #     else:
+    #         n_hop_adjacency_t_h_n_n[:, hop] = torch.linalg.matrix_power(adjacency_t_n_n, hop + 1)
 
-    return positions_t_n_xy, n_hop_adjacency_t_h_n_n
+    # return positions_t_n_xy, n_hop_adjacency_t_h_n_n
+    return positions_t_n_xy
+
+def genAnchors(positions_t_n_xy,
+               anchor_ratio         = dataset_cfg['anchor_node_ratio'],
+               distance_threshold   = dataset_cfg['distance_threshold']):
+    time_steps, node_amt, _ = positions_t_n_xy.shape
+
+    # Select anchor nodes
+    anchor_amt = int(np.floor(node_amt * anchor_ratio))
+    anchor_indices_n = torch.randperm(node_amt)[:anchor_amt]
+    # print(f"anchor indices: {anchor_indices_n}")
+
+    # Make anchors still
+    new_positions_t_n_xy = positions_t_n_xy.clone()
+    new_positions_t_n_xy[:, anchor_indices_n, :] = new_positions_t_n_xy[0, anchor_indices_n, :]
+
+    # Initialize X Distance Matrix
+    # Setup anchor-agent and anchor-anchor distances of X(N, N)
+    X = torch.cdist(new_positions_t_n_xy, new_positions_t_n_xy)     # Get full distance matrix
+    X_temp = X.clone()
+
+    mask_anchor = torch.zeros((node_amt, node_amt), dtype=torch.bool)   # Mask out 
+    mask_anchor[anchor_indices_n, :] = True
+    mask_anchor[:, anchor_indices_n] = True
+    X[:, ~mask_anchor] = 0
+
+    A_t_n_n = X_temp < distance_threshold # Create Adj Matrix
+    Xhat_t_n_n = A_t_n_n * X # Create Xhat
+
+    anchor_pos_t_n_xy = torch.zeros(time_steps, node_amt, 2)
+    anchor_pos_t_n_xy[:, anchor_indices_n, :] = new_positions_t_n_xy[:, anchor_indices_n, :]
+
+    return new_positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy
+
 
 def getSubnet(positions_t_n_xy, n_hop_adjacency_t_h_n_n, nhops, ego_idx, timestep):
     adjacency_n_n = n_hop_adjacency_t_h_n_n[timestep, 0]
@@ -406,10 +440,15 @@ def getEgo(all_positions_cpu, adjacency_dynamic_cpu, min_groups=3, hop=2, union=
 
 if __name__ == '__main__':
 
-    pos, adj = genDataset()
+    # pos, adj = genDataset()
+    pos = genDataset()
+    pos2, Xhat_t_n_n, adjacency_t_n_n, anchor_indices_n = genAnchors(pos)
+
+    animatev2(pos2, adjacency_t_n_n, anchor_indices_n)
+    exit()
 
     # plot_faster(pos, adj)
-    animate(pos, adj, 
+    animate(pos, adjacency_t_n_n, 
             num_timesteps=pos.shape[0], 
             num_nodes=pos.shape[1], 
             scale=50, 

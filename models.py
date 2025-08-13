@@ -2,11 +2,12 @@ import math
 import torch
 import torch.nn as nn
 from getModel import getModel
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv 
+from torch_geometric.utils import dense_to_sparse
 from datasetEpisode import GCNDataset, collate_fn, oceanDataset
 from torch.utils.data import DataLoader
 from configReader import read_config
-from makeEpisode import getSubnet
+from makeEpisode import getSubnet, genAnchors
 from tqdm import tqdm
 from pygameAnimate import init_animate, step_animate
 
@@ -454,6 +455,42 @@ class NaiveCloser(nn.Module):
 
         # torch.block_diag(*n_hop_adjacency_b_t_h_n_n)
 
+class oceanGCN(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)
+
+        self.num_timesteps = int(config["dataset"]["timesteps"])
+        self.num_nodes     = int(config["dataset"]["nodes"])
+        self.hops          = int(config["dataset"]["hops"])
+        self.batch_size    = int(config["training"]["batch_size"])
+
+        self.hidden_dim    = int(config['model']['hidden_dim'])
+
+        self.gcn1 = GCNConv(self.num_nodes+2,  self.hidden_dim)
+        self.gcn2 = GCNConv(self.hidden_dim,  self.hidden_dim)
+    
+    def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_sn_xy):
+        # Put to GPU
+        Xhat_t_n_n = Xhat_t_n_n.to(self.device)
+        A_t_n_n = A_t_n_n.to(self.device)
+        anchor_pos_sn_xy = anchor_pos_sn_xy.to(self.device)
+
+        # Create Xfeat_t_n_n2 and Sparse Adj
+        Xfeat_t_n_n2 = torch.cat((Xhat_t_n_n, anchor_pos_sn_xy), dim=2)
+
+        # Create gcn output matrix
+        gcn_out = torch.empty(self.num_timesteps, self.num_nodes, self.hidden_dim)
+
+        for t in range(self.num_timesteps):
+            edge_index, _ = dense_to_sparse(A_t_n_n[t])
+            out1_n_h = self.gcn1(Xfeat_t_n_n2[t], edge_index)
+            out2_n_h = self.gcn2(out1_n_h, edge_index)
+            gcn_out[t] = out2_n_h
+        
+        return gcn_out
+
 if __name__ == '__main__':
 
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
@@ -463,8 +500,7 @@ if __name__ == '__main__':
     nhops = dataset_cfg["hops"]
 
     pos_path = dataset_cfg["pos_path"]
-    adj_path = dataset_cfg["adj_path"]
-    dataset = oceanDataset(pos_path=pos_path, adj_path=adj_path)
+    dataset = oceanDataset(pos_path=pos_path)
 
     batch_size = training_cfg["batch_size"]
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -472,15 +508,16 @@ if __name__ == '__main__':
     model = getModel(eval=False)
 
     for batch_idx, batch in enumerate(dataloader):
-        positions_t_n_xy = batch[0].squeeze()
-        n_hop_adjacency_t_h_n_n = batch[1].squeeze()
+        global_positions_t_n_xy = batch[0].squeeze()
+        positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy = genAnchors(global_positions_t_n_xy)
+        # print(positions_t_n_xy.shape)
+        # print(Xhat_t_n_n.shape)
+        # print(A_t_n_n.shape)
+        # print(anchor_pos_t_n_xy.shape)
 
-        ping_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
-        pong_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
-        current_egoidx = ping_init_b
-
-
-        screen, colors, t, center_x, center_y, clock, recrdr, draw_queue_n_xyc, once = init_animate() 
+        model_out = model(Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy)
+        print(model_out.shape)
+        exit()
 
         for ts in tqdm(range(timesteps-1)):
             ping_xy = positions_t_n_xy[ts, ping_init_b]
@@ -493,7 +530,6 @@ if __name__ == '__main__':
                       )
             
             model_out = model(pos_subnet_sn_xy, adj_subnet_sn_sn, ping_xy, pong_xy)
-            print(model_out.shape)
             # model_out_global = mask_indices_n_global[model_out.item()]
             idx = int(model_out.item())
             model_out_global = mask_indices_n_global[idx]
@@ -512,22 +548,19 @@ if __name__ == '__main__':
                 ego_idx=current_egoidx,
                 model_pick_i=model_out_global,
                 ping_i=ping_init_b,
-                pong_i=pong_init_b
+                pong_i=pong_init_b,
+                drawAll=True
 
             )
             current_egoidx=model_out_global.item()
             if (model_out_global == pong_init_b):
-                print("PONG REACHED")
                 ping_init_b = pong_init_b
                 ping_xy = pong_xy
                 
                 pong_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
                 pong_xy = positions_t_n_xy[ts, pong_init_b]
 
-            else:
-                print(f"model out: {model_out_global}")
-                print(f"pong_i: {pong_init_b}")
-        recrdr.save()
+        recrdr.close()
         print("awwws")
         exit()
 

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from GNNGROUPS.models import *
+from models import *
 from datasetEpisode import GCNDataset, collate_fn
 import torch.nn.functional as F
 import configparser

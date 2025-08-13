@@ -3,23 +3,18 @@ from torch.utils.data import Dataset, DataLoader
 from configReader import read_config
 
 class oceanDataset(Dataset):
-    def __init__(self, pos_path, adj_path):
+    def __init__(self, pos_path):
         super().__init__()
         self.data_pos = torch.load(pos_path, weights_only=True)
-        self.data_adj = torch.load(adj_path, weights_only=True)
 
     def __len__(self):
         return len(self.data_pos)
     
     def __getitem__(self, idx): 
-        (positions_t_n_xy, n_hop_adjacency_t_h_n_n) = self.data_pos[idx], self.data_adj[idx]
+        positions_t_n_xy  = self.data_pos[idx] 
 
-        return (positions_t_n_xy, n_hop_adjacency_t_h_n_n)
+        return positions_t_n_xy 
 
-def ocean_collate_fn(batch):
-    positions_b_t_n_xy, n_hop_adjacency_b_t_h_n_n = zip(*batch)
-
-    
 
 class GCNDataset(Dataset):
     def __init__(self, data_path):

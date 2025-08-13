@@ -8,7 +8,7 @@ from noise import pnoise2
 from animate import plot_faster
 from pygameAnimate import animate, animatev2
 import time as time
-from configReader import read_config
+from configReader import read_config, genAnchors
 from tqdm import tqdm
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
@@ -108,38 +108,6 @@ def genDataset(node_amt             = dataset_cfg['nodes'],
 
     # return positions_t_n_xy, n_hop_adjacency_t_h_n_n
     return positions_t_n_xy
-
-def genAnchors(positions_t_n_xy,
-               anchor_ratio         = dataset_cfg['anchor_node_ratio'],
-               distance_threshold   = dataset_cfg['distance_threshold']):
-    time_steps, node_amt, _ = positions_t_n_xy.shape
-
-    # Select anchor nodes
-    anchor_amt = int(np.floor(node_amt * anchor_ratio))
-    anchor_indices_n = torch.randperm(node_amt)[:anchor_amt]
-    # print(f"anchor indices: {anchor_indices_n}")
-
-    # Make anchors still
-    new_positions_t_n_xy = positions_t_n_xy.clone()
-    new_positions_t_n_xy[:, anchor_indices_n, :] = new_positions_t_n_xy[0, anchor_indices_n, :]
-
-    # Initialize X Distance Matrix
-    # Setup anchor-agent and anchor-anchor distances of X(N, N)
-    X = torch.cdist(new_positions_t_n_xy, new_positions_t_n_xy)     # Get full distance matrix
-    X_temp = X.clone()
-
-    mask_anchor = torch.zeros((node_amt, node_amt), dtype=torch.bool)   # Mask out 
-    mask_anchor[anchor_indices_n, :] = True
-    mask_anchor[:, anchor_indices_n] = True
-    X[:, ~mask_anchor] = 0
-
-    A_t_n_n = X_temp < distance_threshold # Create Adj Matrix
-    Xhat_t_n_n = A_t_n_n * X # Create Xhat
-
-    anchor_pos_t_n_xy = torch.zeros(time_steps, node_amt, 2)
-    anchor_pos_t_n_xy[:, anchor_indices_n, :] = new_positions_t_n_xy[:, anchor_indices_n, :]
-
-    return new_positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy
 
 
 def getSubnet(positions_t_n_xy, n_hop_adjacency_t_h_n_n, nhops, ego_idx, timestep):

@@ -1,3 +1,5 @@
+import os
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 from pygame_screen_recorder import pygame_screen_recorder as pgr
 import subprocess, numpy as np, pygame
@@ -111,6 +113,7 @@ def animatev2(positions_t_n_xy,
         if (t + 1) % num_timesteps == 0 and not once:
             once = True
             print("Saved")
+            print(f"saving to: {file_name}")
             recrdr.close()
             pygame.quit()
             break

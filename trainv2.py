@@ -37,6 +37,7 @@ if __name__ == "__main__":
 
     train_loader, validation_loader     = getDataset()
     model                               = getModel(eval=False)
+    print("Model is on device:", next(model.parameters()).device)
     loss_func                           = torch.nn.MSELoss()
     optimizer                           = optim.Adam(model.parameters(), lr=lr)
 

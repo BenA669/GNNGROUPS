@@ -507,7 +507,7 @@ def getModel(eval=False):
     
     if eval:
         model_save = training_cfg["model_save"]
-        state_dict = torch.load(model_save, map_location=device)
+        state_dict = torch.load(model_save, map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         model.eval()
 

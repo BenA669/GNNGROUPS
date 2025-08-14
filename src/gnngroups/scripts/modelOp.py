@@ -8,6 +8,7 @@ def parse_args():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("-t", "--train", action="store_true", help="Train and validate model")
     group.add_argument("-e", "--eval", action="store_true", help="Evaluate model")
+    parser.add_argument("-d", "--display", action="store_true", help="Display pygame")
 
     args = parser.parse_args()
 
@@ -24,7 +25,7 @@ def main():
         exit()
     
     if (args.eval):
-        evaluate()
+        evaluate(display=args.display)
         exit()
 
 

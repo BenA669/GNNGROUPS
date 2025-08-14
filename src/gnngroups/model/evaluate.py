@@ -133,8 +133,8 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
             best_map  = mapped_pred
     return best_accuracy, best_perm, best_map
 
-def evaluate():
-    train_loader, validation_loader     = getDataset()
+def evaluate(display=True):
+    train_loader, validation_loader     = getDataset(eval=True)
     model                               = getModel(eval=True)
     loss_func                           = torch.nn.MSELoss()
 
@@ -145,9 +145,12 @@ def evaluate():
         total_loss += loss
         print(f"Loss: {loss}")
 
-        animatev2(positions_t_n_xy, A_t_n_n, anchor_indices_n, pred=out_emb_t_n_o)
+        if display:
+            animatev2(positions_t_n_xy, A_t_n_n, anchor_indices_n, pred=out_emb_t_n_o)
 
-        input("Press any key to continue...")
+            input("Press any key to continue...")
+
+    print(f"Average Loss: {total_loss / len(validation_loader)}") 
 
 
 

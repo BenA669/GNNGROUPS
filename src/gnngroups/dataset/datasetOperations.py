@@ -20,11 +20,14 @@ class oceanDataset(Dataset):
 
         return positions_t_n_xy 
 
-def getDataset():
+def getDataset(eval=False):
+    if eval:
+        val_split = 1
+    else:
+        val_split   = training_cfg["val_split"]
 
     pos_path    = dataset_cfg["pos_path"]
     batch_size   = training_cfg["batch_size"]
-    val_split   = training_cfg["val_split"]
     samples     = training_cfg["samples"]
 
     # Get Dataset type

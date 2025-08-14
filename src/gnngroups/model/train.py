@@ -56,12 +56,14 @@ def train():
 
         val_loss = epoch_pass(validation_loader, model, loss_func, optimizer, train=False)
         hist_valid_loss.append(val_loss.item())
-        print(f"Validation Loss: {val_loss}\n")
+        print(f"Validation Loss: {val_loss}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_save)
             print("New best val loss, model saved")
+
+        print()
 
     
     print(f"Training completed. Best val loss: {best_val_loss}")

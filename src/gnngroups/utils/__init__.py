@@ -6,5 +6,5 @@ __all__ = [
     "model_cfg",
     "dataset_cfg",
     "training_cfg",
-    "device"
+    "device",
 ]

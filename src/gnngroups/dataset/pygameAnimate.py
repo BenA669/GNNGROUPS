@@ -46,7 +46,8 @@ def animatev2(positions_t_n_xy,
               anchor_indices_n=None,
               scale=50,
               screen_size=1080,
-              boundary=3):
+              boundary=3,
+              pred=None):
             #   boundary=dataset_cfg['boundary']):
     
     scale = (screen_size / (boundary * 2)) - 20
@@ -69,7 +70,8 @@ def animatev2(positions_t_n_xy,
     colors = (
         (255, 0, 255), # Pink
         (0, 255, 154), # Green
-        (255, 255, 255) # White
+        (255, 255, 255), # White
+        (128,128,128) # Gray
     )
     color = colors[2]
 
@@ -101,6 +103,15 @@ def animatev2(positions_t_n_xy,
                                      (int(x2*scale)+center_x, int(y2*scale)+center_y), 1)
             # pygame.draw.circle(screen, color, (int(x*scale)+center_x, int(y*scale)+center_y), 5)
             draw_queue_n_xyc.append((int(x*scale)+center_x, int(y*scale)+center_y, color))
+
+            if pred is not None:
+                x_pred, y_pred = pred[t, n, :]
+
+                pygame.draw.line(screen, colors[3], 
+                                    (int(x*scale)+center_x, int(y*scale)+center_y), 
+                                    (int(x_pred*scale)+center_x, int(y_pred*scale)+center_y), 1)
+                draw_queue_n_xyc.append((int(x_pred*scale)+center_x, int(y_pred*scale)+center_y, colors[3]))
+
         
         for xyc in draw_queue_n_xyc:
             pygame.draw.circle(screen, xyc[2], (xyc[0], xyc[1]), 5)

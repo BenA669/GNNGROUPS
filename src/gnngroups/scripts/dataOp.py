@@ -22,19 +22,7 @@ def main():
     args = parse_args()
 
     if (args.make):
-        anchor_ratio = dataset_cfg["anchor_node_ratio"]
-        distance_threshold = dataset_cfg["distance_threshold"]
-
-        positions_t_n_xy = genDataset()
-
-        new_positions_t_n_xy, \
-        Xhat_t_n_n, \
-        A_t_n_n, \
-        anchor_pos_t_n_xy, \
-        anchor_indices_n = genAnchors(positions_t_n_xy, anchor_ratio, distance_threshold)
-
-        animatev2(new_positions_t_n_xy, A_t_n_n, anchor_indices_n)
-
+        makeEpisode()
         exit()
     
     if (args.bulk):

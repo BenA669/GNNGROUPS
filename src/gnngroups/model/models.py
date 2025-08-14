@@ -3,12 +3,10 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import GCNConv 
 from torch_geometric.utils import dense_to_sparse
-from Dataset.datasetEpisode import oceanDataset
 from torch.utils.data import DataLoader
-from configReader import read_config, getModel
-from Dataset.makeEpisode import genAnchors
 from tqdm import tqdm
-from Dataset.pygameAnimate import init_animate, step_animate
+from gnngroups.dataset import *
+from gnngroups.utils import *
 
 class BaseModel(nn.Module):
     def __init__(self, config):
@@ -474,7 +472,7 @@ class oceanGCN(nn.Module):
 
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
     
-    def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_sn_xy):
+    def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_sn_xy, eval=False):
         # Put to GPU
         Xhat_t_n_n = Xhat_t_n_n.to(self.device)
         A_t_n_n = A_t_n_n.to(self.device)
@@ -498,9 +496,24 @@ class oceanGCN(nn.Module):
         
         return out_emb_t_n_o
 
-if __name__ == '__main__':
+def getModel(eval=False):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_cfg, dataset_cfg, training_cfg = read_config("config.ini")
+    # module = importlib.import_module("models")
+    # model_type = model_cfg['model_type']
+    # class_type = getattr(module, model_type)
+    class_type = globals().get(model_cfg['model_type'])
+    model = class_type(model_cfg["config"]).to(device)
+    
+    if eval:
+        model_save = training_cfg["model_save"]
+        state_dict = torch.load(model_save, map_location=device)
+        model.load_state_dict(state_dict)
+        model.eval()
+
+    return model
+
+if __name__ == '__main__':
 
     nnodes = dataset_cfg["nodes"]
     timesteps = dataset_cfg["timesteps"]

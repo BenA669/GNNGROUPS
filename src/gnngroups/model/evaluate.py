@@ -1,24 +1,15 @@
-from GNNGROUPS.models import *
 from torch import torch
-from GNNGROUPS.Dataset.makeEpisode import makeDatasetDynamicPerlin, getEgo
 from sklearn.cluster import KMeans
 import numpy as np
 import itertools
-from animate import plot_faster
 from tqdm import tqdm
 import hdbscan
 from umap import UMAP
-from GNNGROUPS.Dataset.datasetEpisode import GCNDataset, collate_fn
 from torch.utils.data import DataLoader
-from configReader import read_config
-from getModel import getModel
-
-
-
-
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from gnngroups.utils import *
+from gnngroups.dataset import *
+from .models import getModel
+from .train import batch_to_modelout
 
 def getData():
     time_steps = 10
@@ -141,6 +132,24 @@ def compute_best_accuracy(true_labels, pred_labels, n_clusters):
             best_perm = perm
             best_map  = mapped_pred
     return best_accuracy, best_perm, best_map
+
+def evaluate():
+    train_loader, validation_loader     = getDataset()
+    model                               = getModel(eval=True)
+    loss_func                           = torch.nn.MSELoss()
+
+    total_loss = 0
+    for batch in validation_loader:
+        out_emb_t_n_o, positions_t_n_xy, A_t_n_n, anchor_indices_n = batch_to_modelout(batch, model)
+        loss = loss_func(out_emb_t_n_o, positions_t_n_xy.to(device))
+        total_loss += loss
+        print(f"Loss: {loss}")
+
+        animatev2(positions_t_n_xy, A_t_n_n, anchor_indices_n, pred=out_emb_t_n_o)
+
+        input("Press any key to continue...")
+
+
 
 if __name__ == "__main__":
     model_cfg, dataset_cfg, training_cfg = read_config("config.ini")

@@ -9,6 +9,7 @@ dependencies = []
 
 [project.scripts]
 dataop = "gnngroups.scripts.dataOp:main"
+modelop = "gnngroups.scripts.modelOp:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

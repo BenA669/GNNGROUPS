@@ -8,6 +8,7 @@ from noise import pnoise2
 import time as time
 from tqdm import tqdm
 from gnngroups.utils import *
+from .pygameAnimate import animatev2
 
 def adjacency_to_edge_index(adj_t: torch.Tensor):
     # (node_i, node_j) for all 1-entries
@@ -135,12 +136,18 @@ def genAnchors(positions_t_n_xy,
 
     return new_positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy, anchor_indices_n
 
+def makeEpisode():
+    anchor_ratio = dataset_cfg["anchor_node_ratio"]
+    distance_threshold = dataset_cfg["distance_threshold"]
 
-# if __name__ == '__main__':
+    positions_t_n_xy = genDataset()
 
-#     pos = genDataset()
-#     pos2, Xhat_t_n_n, adjacency_t_n_n, anchor_indices_n = genAnchors(pos)
+    new_positions_t_n_xy, \
+    Xhat_t_n_n, \
+    A_t_n_n, \
+    anchor_pos_t_n_xy, \
+    anchor_indices_n = genAnchors(positions_t_n_xy, anchor_ratio, distance_threshold)
 
-#     animatev2(pos2, adjacency_t_n_n, anchor_indices_n)
+    animatev2(new_positions_t_n_xy, A_t_n_n, anchor_indices_n)
 
-    
+    return

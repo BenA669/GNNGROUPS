@@ -1,5 +1,6 @@
 import torch
 import torch.optim as optim
+import json
 from tqdm import tqdm
 from gnngroups.utils import *
 from gnngroups.dataset import *
@@ -13,17 +14,24 @@ def batch_to_modelout(batch, model):
     return out_emb_t_n_o, positions_t_n_xy, A_t_n_n, anchor_indices_n
 
 def epoch_pass(loader, model, loss_func, optimizer, train=True):
-    total_loss = 0
+    global_total_loss   = 0
+    total_loss          = 0
+    batch_amt           = len(loader)
+
     if train:
         desc_str = "Training"
     else:
         desc_str = "Validating"
 
-    with torch.set_grad_enabled(train):
+    with torch.set_grad_enabled(train): # Disable grad when evaluating
         for batch in tqdm(loader, desc=desc_str):
             out_emb_t_n_o, positions_t_n_xy, _, anchor_indices_n = batch_to_modelout(batch, model)
 
-            # loss = loss_func(out_emb_t_n_o, positions_t_n_xy.to(device))
+            # Global position loss for data collecting
+            global_loss = loss_func(out_emb_t_n_o, positions_t_n_xy.to(device))
+            global_total_loss += global_loss
+
+            # Loss only on anchor positions
             loss = loss_func(out_emb_t_n_o[:, anchor_indices_n], positions_t_n_xy[:, anchor_indices_n].to(device))
             total_loss += loss
 
@@ -31,8 +39,10 @@ def epoch_pass(loader, model, loss_func, optimizer, train=True):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+    avg_loss        = (total_loss / batch_amt)
+    avg_global_loss = (global_total_loss / batch_amt)
 
-    return total_loss / len(loader)
+    return avg_loss, avg_global_loss
 
 def train():
     lr              = training_cfg["learning_rate"]
@@ -41,30 +51,39 @@ def train():
 
     train_loader, validation_loader     = getDataset()
     model                               = getModel(eval=False)
-    print("Model is on device:", next(model.parameters()).device)
     loss_func                           = torch.nn.MSELoss()
     optimizer                           = optim.Adam(model.parameters(), lr=lr)
+    print("Model is on device:", next(model.parameters()).device)
 
-    hist_training_loss  = []
-    hist_valid_loss     = []
-    best_val_loss       = float('inf')
-    for epoch in range(0, epochs):
-        print(f"Epoch [{epoch}/{epochs}]:")
+    hist_training_loss         = []
+    hist_valid_loss            = []
+    hist_training_global_loss  = []
+    hist_valid_global_loss     = []
+    best_val_loss              = float('inf')
+    try:
+        for epoch in range(0, epochs):
+            print(f"Epoch [{epoch}/{epochs}]:")
 
-        train_loss = epoch_pass(train_loader, model, loss_func, optimizer)
-        hist_training_loss.append(train_loss.item())
-        print(f"Training Loss: {train_loss}")
+            train_loss, train_global_loss = epoch_pass(train_loader, model, loss_func, optimizer)
+            hist_training_loss.append(train_loss.item())
+            hist_training_global_loss.append(train_global_loss.item())
+            print(f"Training Loss: {train_loss}")
+            print(f"Global Training Loss: {train_global_loss}")
 
-        val_loss = epoch_pass(validation_loader, model, loss_func, optimizer, train=False)
-        hist_valid_loss.append(val_loss.item())
-        print(f"Validation Loss: {val_loss}")
+            val_loss, val_global_loss = epoch_pass(validation_loader, model, loss_func, optimizer, train=False)
+            hist_valid_loss.append(val_loss.item())
+            hist_valid_global_loss.append(val_global_loss.item())
+            print(f"Validation Loss: {val_loss}")
+            print(f"Global Validation Loss: {val_global_loss}")
 
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), model_save)
-            print("New best val loss, model saved")
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                torch.save(model.state_dict(), model_save)
+                print("New best val loss, model saved")
 
-        print()
+            print()
+    except:
+        print("ENDED")
 
     
     print(f"Training completed. Best val loss: {best_val_loss}")
@@ -72,6 +91,39 @@ def train():
     print(hist_training_loss)
     print(f"Validation Loss History: ")
     print(hist_valid_loss)
+    print(f"Global Training Loss History: ")
+    print(hist_training_global_loss)
+    print(f"Global Validation Loss History: ")
+    print(hist_valid_global_loss)
+
+    while True:
+        write_log = input("Write log? y/n")
+        if write_log == 'y':
+            data_dict = {
+                "tloss" : hist_training_loss,
+                "vloss" : hist_valid_loss,
+                "tgloss": hist_training_global_loss,
+                "vgloss": hist_valid_global_loss,
+                "epoch" : f"{epoch} / {epochs}",
+                "model" : model_save,
+                "mcfg"  : model_cfg,
+                "dcfg"  : dataset_cfg,
+                "tcfg"  : training_cfg
+            }
+
+            # data_dict.pop('config')
+            data_dict["mcfg"].pop('config')
+            print(data_dict)
+
+
+            log_path = training_cfg['log_path']
+            print(log_path)
+            print(type(data_dict))
+            with open(log_path, 'w') as log_file:
+                json.dump(data_dict, log_file, indent=4)
+            break
+        elif write_log == 'n':
+            break
 
 if __name__ == "__main__":
     train()

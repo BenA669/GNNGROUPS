@@ -41,12 +41,16 @@ def read_config(config_path: str = "config.ini"):
 
     dir_path     = str(dataset_cfg.get("dir_path", ""))
     dataset_name = str(dataset_cfg.get("dataset_name", ""))
+    log_folder   = str(training_cfg.get("log_folder_path", ""))
 
     dataset_cfg["train_path"] = f"{dir_path}{dataset_name}_train.pt"
     dataset_cfg["val_path"]   = f"{dir_path}{dataset_name}_val.pt"
 
     dataset_cfg["adj_path"] = f"{dir_path}{dataset_name}_adj.pt"
     dataset_cfg["pos_path"] = f"{dir_path}{dataset_name}_pos.pt"
+
+    modelname   = training_cfg["model_name_pt"]
+    training_cfg["log_path"] = f"{log_folder}training_stats_{modelname}.json"
 
     model_cfg["config"] = config
 

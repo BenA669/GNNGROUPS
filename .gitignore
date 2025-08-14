@@ -16,3 +16,4 @@ Dynamic/SplitVid
 *.gif
 *.png
 *.egg-info/
+*.un~

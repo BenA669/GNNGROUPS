@@ -530,6 +530,7 @@ class oceanGCN(nn.Module):
         self.lstm = nn.LSTM(self.hidden_dim, self.hidden_dim)
 
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
+        self.dropout = nn.Dropout(p=0.5)
     
     def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_sn_xy, eval=False):
         # Put to GPU
@@ -545,12 +546,20 @@ class oceanGCN(nn.Module):
 
         for t in range(self.num_timesteps):
             edge_index, _ = dense_to_sparse(A_t_n_n[t])
-            out1_n_h = self.gcn1(Xfeat_t_n_n2[t], edge_index)
-            in2_n_h  = torch.relu(out1_n_h)
-            out2_n_h = self.gcn2(in2_n_h, edge_index)
-            in3_n_h  = torch.relu(out2_n_h)
-            out3_n_h = self.gcn3(in3_n_h, edge_index)
-            gcn_out_t_n_h[t] = out3_n_h
+            x = self.gcn1(Xfeat_t_n_n2[t], edge_index)
+            x = torch.relu(x)
+            x = self.dropout(x)
+
+
+            x = self.gcn2(x, edge_index)
+            x  = torch.relu(x)
+            x = self.dropout(x)
+
+            x = self.gcn3(x, edge_index)
+            x  = torch.relu(x)
+            x = self.dropout(x)
+
+            gcn_out_t_n_h[t] = x
         
         # lstm_out_t_n_h, (h_n, _) = self.lstm(gcn_out_t_n_h)
         out_emb_t_n_o = self.fc(gcn_out_t_n_h)

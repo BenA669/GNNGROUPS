@@ -62,7 +62,6 @@ def train():
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_save)
             print("New best val loss, model saved")
-        break
 
     
     print(f"Training completed. Best val loss: {best_val_loss}")

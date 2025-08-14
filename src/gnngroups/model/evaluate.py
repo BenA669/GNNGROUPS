@@ -4,7 +4,7 @@ import numpy as np
 import itertools
 from tqdm import tqdm
 import hdbscan
-from umap import UMAP
+# from umap import UMAP
 from torch.utils.data import DataLoader
 from gnngroups.utils import *
 from gnngroups.dataset import *

@@ -21,9 +21,10 @@ def epoch_pass(loader, model, loss_func, optimizer, train=True):
 
     with torch.set_grad_enabled(train):
         for batch in tqdm(loader, desc=desc_str):
-            out_emb_t_n_o, positions_t_n_xy, _, _ = batch_to_modelout(batch, model)
+            out_emb_t_n_o, positions_t_n_xy, _, anchor_indices_n = batch_to_modelout(batch, model)
 
-            loss = loss_func(out_emb_t_n_o, positions_t_n_xy.to(device))
+            # loss = loss_func(out_emb_t_n_o, positions_t_n_xy.to(device))
+            loss = loss_func(out_emb_t_n_o[:, anchor_indices_n], positions_t_n_xy[:, anchor_indices_n].to(device))
             total_loss += loss
 
             if train == True:

@@ -107,9 +107,9 @@ def animatev2(positions_t_n_xy,
             if pred is not None:
                 x_pred, y_pred = pred[t, n, :]
 
-                # pygame.draw.line(screen, colors[3], 
-                #                     (int(x*scale)+center_x, int(y*scale)+center_y), 
-                #                     (int(x_pred*scale)+center_x, int(y_pred*scale)+center_y), 1)
+                pygame.draw.line(screen, colors[3], 
+                                    (int(x*scale)+center_x, int(y*scale)+center_y), 
+                                    (int(x_pred*scale)+center_x, int(y_pred*scale)+center_y), 1)
                 draw_queue_n_xyc.append((int(x_pred*scale)+center_x, int(y_pred*scale)+center_y, colors[3]))
 
         

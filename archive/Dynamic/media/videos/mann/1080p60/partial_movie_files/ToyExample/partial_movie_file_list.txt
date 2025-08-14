@@ -1,6 +1,0 @@
-# This file is used internally by FFMPEG.
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/ToyExample/3529212410_422412355_735197471.mp4'
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/ToyExample/3040924799_1110121960_3172591498.mp4'
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/ToyExample/3040924799_6310891_3890114593.mp4'
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/ToyExample/3040924799_2688965532_400487976.mp4'
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/ToyExample/3040924799_2146329308_2873729818.mp4'

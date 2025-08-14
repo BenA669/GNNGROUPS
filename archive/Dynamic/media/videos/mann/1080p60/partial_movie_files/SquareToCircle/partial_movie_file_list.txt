@@ -1,4 +1,0 @@
-# This file is used internally by FFMPEG.
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/SquareToCircle/3529212410_2169219173_223132457.mp4'
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/SquareToCircle/3040924799_2176658000_557880437.mp4'
-file 'file:C:/Users/Benja/Documents/Projects/GNN/GNNGROUPS/Dynamic/media/videos/mann/1080p60/partial_movie_files/SquareToCircle/3040924799_2956010123_557880437.mp4'

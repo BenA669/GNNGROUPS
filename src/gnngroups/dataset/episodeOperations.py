@@ -1,4 +1,5 @@
 import random
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
@@ -92,7 +93,9 @@ def genBulkDataset():
 
     dataset_pos = torch.empty(samples, time_steps, node_amt, 2)
 
-    save_file = dataset_cfg["dir_path"] + dataset_cfg["dataset_name"]
+    save_dir  = dataset_cfg["dir_path"] 
+    save_file = save_dir + dataset_cfg["dataset_name"]
+    os.makedirs(save_dir, exist_ok=True)
     print("Saving positions to {}".format(save_file + "_pos.pt"))
 
     for i in tqdm(range(samples)):

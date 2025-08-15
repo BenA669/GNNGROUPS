@@ -571,7 +571,6 @@ class oceanGCNAttention(nn.Module):
         super().__init__()
         print("Using oceanGCN")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.to(self.device)
 
         self.num_timesteps = int(config["dataset"]["timesteps"])
         self.num_nodes     = int(config["dataset"]["nodes"])
@@ -592,11 +591,14 @@ class oceanGCNAttention(nn.Module):
         self.multi_attention = nn.MultiheadAttention(
             embed_dim=self.hidden_dim,
             num_heads=self.num_heads,
-            batch_first=True
         )
 
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
         self.dropout = nn.Dropout(p=0.5)
+        self.norm_gcn = nn.LayerNorm(self.hidden_dim)
+        self.norm_attn = nn.LayerNorm(self.hidden_dim)
+
+        self.to(self.device)
     
     def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_sn_xy, eval=False):
         # Put to GPU
@@ -614,15 +616,18 @@ class oceanGCNAttention(nn.Module):
             edge_index, _ = dense_to_sparse(A_t_n_n[t])
             x = self.gcn1(Xfeat_t_n_n2[t], edge_index)
             x = torch.relu(x)
+            x = self.norm_gcn(x)
             x = self.dropout(x)
 
 
             x = self.gcn2(x, edge_index)
             x  = torch.relu(x)
+            x = self.norm_gcn(x)
             x = self.dropout(x)
 
             x = self.gcn3(x, edge_index)
             x  = torch.relu(x)
+            x = self.norm_gcn(x)
             x = self.dropout(x)
 
             gcn_out_t_n_h[t] = x
@@ -632,7 +637,7 @@ class oceanGCNAttention(nn.Module):
         key     = self.key(gcn_out_t_n_h) 
         value   = self.value(gcn_out_t_n_h) 
         attn_out, _ = self.multi_attention(query, key, value)
-
+        attn_out    = self.norm_attn(attn_out)
         out_emb_t_n_o = self.fc(attn_out)
         
         return out_emb_t_n_o

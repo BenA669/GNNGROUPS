@@ -8,12 +8,13 @@ def parse_args():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("-t", "--train", action="store_true", help="Train and validate model")
     group.add_argument("-e", "--eval", action="store_true", help="Evaluate model")
+    group.add_argument("-l", "--log", action="store_true", help="Show training log plot")
     parser.add_argument("-d", "--display", action="store_true", help="Display pygame")
 
     args = parser.parse_args()
 
-    if not (args.train or args.eval):
-        parser.error("At least one of --train or --eval is required.")
+    if not (args.train or args.eval or args.log):
+        parser.error("At least one of --train, --log, or --eval is required.")
 
     return args
 
@@ -26,6 +27,10 @@ def main():
     
     if (args.eval):
         evaluate(display=args.display)
+        exit()
+
+    if (args.log):
+        show_plot(display=args.display)
         exit()
 
 

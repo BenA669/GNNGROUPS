@@ -5,6 +5,34 @@ from tqdm import tqdm
 from gnngroups.utils import *
 from gnngroups.dataset import *
 from .models import getModel
+import matplotlib.pyplot as plt
+
+def show_plot(display=True):
+    log_folder_path = training_cfg['log_folder_path']
+    log_path = training_cfg['log_path']
+    model_type = model_cfg['model_type']
+    with open(log_path, 'r') as f:
+        log_data = json.load(f)
+    tloss = log_data['tloss']
+    vloss = log_data['vloss']
+    tgloss = log_data['tgloss']
+    vgloss = log_data['vgloss']
+    epochs = range(1, len(tloss) + 1) 
+
+    plt.figure(figsize=(10, 6)) 
+    plt.plot(epochs, tloss, label='Training Loss')
+    plt.plot(epochs, vloss, label='Validation Loss')
+    plt.plot(epochs, tgloss, label='Global Training Loss')
+    plt.plot(epochs, vgloss, label='Global Validation Loss')
+
+    plt.title(f'{model_type}: Training and Validation Loss over Epochs') 
+    plt.xlabel('Epochs') 
+    plt.ylabel('Loss') 
+    plt.legend() 
+    plt.grid(True) 
+    plt.savefig(f"{log_folder_path}Log_{model_type}.png")
+    if display:
+        plt.show() 
 
 def batch_to_modelout(batch, model):
     global_positions_t_n_xy = batch[0].squeeze()

@@ -49,7 +49,7 @@ def read_config(config_path: str = "config.ini"):
     dataset_cfg["adj_path"] = f"{dir_path}{dataset_name}_adj.pt"
     dataset_cfg["pos_path"] = f"{dir_path}{dataset_name}_pos.pt"
 
-    modelname   = training_cfg["model_name_pt"]
+    modelname   = model_cfg["model_type"]
     training_cfg["log_path"] = f"{log_folder}training_stats_{modelname}.json"
 
     model_cfg["config"] = config

@@ -85,6 +85,7 @@ def train():
     epochs          = training_cfg["epochs"]
     model_save      = training_cfg["model_save"]
     anchor_only     = training_cfg["anchor_only"]
+    print(f"Anchor only loss: {anchor_only}")
 
     save_dir        = dataset_cfg["dir_path"] 
     os.makedirs(save_dir, exist_ok=True)

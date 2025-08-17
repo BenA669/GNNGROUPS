@@ -465,8 +465,9 @@ class oceanGCNLSTM(nn.Module):
 
         self.hidden_dim    = int(config['model']['hidden_dim'])
         self.output_dim    = int(config['model']['output_dim'])
+        self.extra_dims    = int(config['model']['extra_dim'])
 
-        self.gcn1 = GCNConv(self.num_nodes+2,  self.hidden_dim)
+        self.gcn1 = GCNConv(self.num_nodes + self.extra_dims,  self.hidden_dim)
         self.gcn2 = GCNConv(self.hidden_dim,  self.hidden_dim)
         self.gcn3 = GCNConv(self.hidden_dim,  self.hidden_dim)
         self.lstm = nn.LSTM(self.hidden_dim, self.hidden_dim)
@@ -474,14 +475,14 @@ class oceanGCNLSTM(nn.Module):
         self.fc = nn.Linear(self.hidden_dim, self.output_dim)
         self.dropout = nn.Dropout(p=0.5)
     
-    def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_sn_xy, eval=False):
+    def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xye, eval=False):
         # Put to GPU
         Xhat_t_n_n = Xhat_t_n_n.to(self.device)
         A_t_n_n = A_t_n_n.to(self.device)
-        anchor_pos_sn_xy = anchor_pos_sn_xy.to(self.device)
+        anchor_pos_t_n_xye = anchor_pos_t_n_xye.to(self.device)
 
         # Create Xfeat_t_n_n2 and Sparse Adj
-        Xfeat_t_n_n2 = torch.cat((Xhat_t_n_n, anchor_pos_sn_xy), dim=2)
+        Xfeat_t_n_n2 = torch.cat((Xhat_t_n_n, anchor_pos_t_n_xye), dim=2)
 
         # Create gcn output matrix
         gcn_out_t_n_h = torch.empty((self.num_timesteps, self.num_nodes, self.hidden_dim), device=self.device)
@@ -523,8 +524,9 @@ class oceanGCN(nn.Module):
 
         self.hidden_dim    = int(config['model']['hidden_dim'])
         self.output_dim    = int(config['model']['output_dim'])
+        self.extra_dims    = int(config['model']['extra_dim'])
 
-        self.gcn1 = GCNConv(self.num_nodes+3,  self.hidden_dim)
+        self.gcn1 = GCNConv(self.num_nodes + self.extra_dims,  self.hidden_dim)
         self.gcn2 = GCNConv(self.hidden_dim,  self.hidden_dim)
         self.gcn3 = GCNConv(self.hidden_dim,  self.hidden_dim)
 
@@ -579,9 +581,9 @@ class oceanGCNAttention(nn.Module):
 
         self.hidden_dim    = int(config['model']['hidden_dim'])
         self.output_dim    = int(config['model']['output_dim'])
-        self.num_heads     = int(config['model']['num_heads'])
+        self.extra_dims    = int(config['model']['extra_dim'])
 
-        self.gcn1 = GCNConv(self.num_nodes+2,  self.hidden_dim)
+        self.gcn1 = GCNConv(self.num_nodes + self.extra_dims,  self.hidden_dim)
         self.gcn2 = GCNConv(self.hidden_dim,  self.hidden_dim)
         self.gcn3 = GCNConv(self.hidden_dim,  self.hidden_dim)
 
@@ -602,14 +604,14 @@ class oceanGCNAttention(nn.Module):
 
         self.to(self.device)
     
-    def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_sn_xy, eval=False):
+    def forward(self, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xye, eval=False):
         # Put to GPU
         Xhat_t_n_n = Xhat_t_n_n.to(self.device)
         A_t_n_n = A_t_n_n.to(self.device)
-        anchor_pos_sn_xy = anchor_pos_sn_xy.to(self.device)
+        anchor_pos_t_n_xye = anchor_pos_t_n_xye.to(self.device)
 
         # Create Xfeat_t_n_n2
-        Xfeat_t_n_n2 = torch.cat((Xhat_t_n_n, anchor_pos_sn_xy), dim=2)
+        Xfeat_t_n_n2 = torch.cat((Xhat_t_n_n, anchor_pos_t_n_xye), dim=2)
 
         # Create gcn output matrix
         gcn_out_t_n_h = torch.empty((self.num_timesteps, self.num_nodes, self.hidden_dim), device=self.device)

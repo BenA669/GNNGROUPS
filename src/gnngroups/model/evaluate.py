@@ -6,7 +6,7 @@ from .train import batch_to_modelout
 
 # Only Anchor Loss
 # OceanGCNLSTM   AvgLoss: 0.34
-# OceanGCN       AvgLoss: 0.36
+# OceanGCN       AvgLoss: 0.32
 # OceanAttention AvgLoss: 0.44
 
 # All Nodes Loss

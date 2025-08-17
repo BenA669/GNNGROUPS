@@ -2,6 +2,7 @@ import torch
 import torch.optim as optim
 import json
 import traceback
+import os
 from tqdm import tqdm
 from gnngroups.utils import *
 from gnngroups.dataset import *
@@ -84,6 +85,10 @@ def train():
     epochs          = training_cfg["epochs"]
     model_save      = training_cfg["model_save"]
     anchor_only     = training_cfg["anchor_only"]
+
+    save_dir        = dataset_cfg["dir_path"] 
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Saving model to {model_save}")
 
     train_loader, validation_loader     = getDataset()
     model                               = getModel(eval=False)

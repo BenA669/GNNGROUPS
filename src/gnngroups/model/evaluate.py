@@ -10,7 +10,7 @@ from .train import batch_to_modelout
 # OceanAttention AvgLoss: 0.44
 
 # All Nodes Loss
-# OceanAttention AvgLoss: 0.35
+# OceanAttention AvgLoss: 0.24
 
 def evaluate(display=True):
     train_loader, validation_loader     = getDataset(eval=True)

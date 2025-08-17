@@ -5,10 +5,10 @@ echo "Updating system"
 sudo apt-get update -y
 
 echo "Installing uv"
-pip install uv
+python -m pip install uv
 
 echo "Creating virual environment"
-uv venv vov --python 3.12.7
+python -m uv venv vov --python 3.12.7
 
 echo "Installing pip"
 ./vov/bin/python -m ensurepip --upgrade
@@ -27,3 +27,4 @@ echo "Installing gnngroups"
 
 echo "Verifying cuda installation"
 ./vov/bin/python -c "import torch; print(torch.cuda.is_available())"
+

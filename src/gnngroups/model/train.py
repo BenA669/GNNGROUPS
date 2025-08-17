@@ -38,8 +38,8 @@ def show_plot(display=True):
 
 def batch_to_modelout(batch, model):
     global_positions_t_n_xy = batch[0].squeeze()
-    positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy, anchor_indices_n = genAnchors(global_positions_t_n_xy)
-    out_emb_t_n_o = model(Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy)
+    positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xye, anchor_indices_n = genAnchors(global_positions_t_n_xy)
+    out_emb_t_n_o = model(Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xye)
 
     return out_emb_t_n_o, positions_t_n_xy, A_t_n_n, anchor_indices_n
 

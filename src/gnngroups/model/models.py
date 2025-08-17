@@ -480,6 +480,8 @@ class oceanGCNLSTM(nn.Module):
         Xhat_t_n_n = Xhat_t_n_n.to(self.device)
         A_t_n_n = A_t_n_n.to(self.device)
         anchor_pos_t_n_xye = anchor_pos_t_n_xye.to(self.device)
+        anchor_pos_t_n_xye = anchor_pos_t_n_xye[:, :, :self.extra_dims]
+        # print(anchor_pos_t_n_xye.shape)
 
         # Create Xfeat_t_n_n2 and Sparse Adj
         Xfeat_t_n_n2 = torch.cat((Xhat_t_n_n, anchor_pos_t_n_xye), dim=2)
@@ -609,6 +611,7 @@ class oceanGCNAttention(nn.Module):
         Xhat_t_n_n = Xhat_t_n_n.to(self.device)
         A_t_n_n = A_t_n_n.to(self.device)
         anchor_pos_t_n_xye = anchor_pos_t_n_xye.to(self.device)
+        anchor_pos_t_n_xye = anchor_pos_t_n_xye[:, :, :self.extra_dims]
 
         # Create Xfeat_t_n_n2
         Xfeat_t_n_n2 = torch.cat((Xhat_t_n_n, anchor_pos_t_n_xye), dim=2)

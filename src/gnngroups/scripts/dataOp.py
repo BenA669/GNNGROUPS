@@ -1,6 +1,4 @@
 import argparse
-from gnngroups.dataset import *
-from gnngroups.utils import *
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -22,14 +20,17 @@ def main():
     args = parse_args()
 
     if (args.make):
+        from gnngroups.dataset import makeEpisode
         makeEpisode()
         exit()
     
     if (args.bulk):
+        from gnngroups.dataset import genBulkDataset
         genBulkDataset()
         exit()
 
     if (args.sample):
+        from gnngroups.dataset import sampleDataset
         sampleDataset()
         exit()
 

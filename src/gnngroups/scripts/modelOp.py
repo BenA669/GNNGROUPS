@@ -1,5 +1,4 @@
 import argparse
-from gnngroups.model import *
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -22,14 +21,17 @@ def main():
     args = parse_args()
 
     if (args.train):
+        from gnngroups.model import train
         train()
         exit()
     
     if (args.eval):
+        from gnngroups.model import evaluate
         evaluate(display=args.display)
         exit()
 
     if (args.log):
+        from gnngroups.model import show_plot
         show_plot(display=args.display)
         exit()
 

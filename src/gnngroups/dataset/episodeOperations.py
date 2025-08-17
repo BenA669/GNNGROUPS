@@ -137,7 +137,6 @@ def genAnchors(positions_t_n_xy,
     anchor_pos_t_n_xye = torch.zeros(time_steps, node_amt, 3)
     anchor_pos_t_n_xye[:, anchor_indices_n, :] =\
         torch.cat((new_positions_t_n_xy[:, anchor_indices_n, :], torch.ones((time_steps, anchor_amt, 1))), dim=2)
-    print(f"anchorpos: {anchor_pos_t_n_xye}")
 
     return new_positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xye, anchor_indices_n
 

@@ -17,4 +17,4 @@ echo "Install uv pip"
 ./vov/bin/python -m pip install uv
 
 echo "Installing packages"
-./vov/bin/python -m uv pip install torch torchvision matplotlib noise tqdm pygame pygame_screen_recorder json torch_geometric
+./vov/bin/python -m uv pip install torch torchvision matplotlib noise tqdm pygame pygame_screen_recorder torch_geometric

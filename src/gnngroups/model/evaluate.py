@@ -4,8 +4,9 @@ from gnngroups.dataset import *
 from .models import getModel
 from .train import batch_to_modelout
 
-# OceanGCNLSTM AvgLoss: 0.34
-# OceanGCN AvgLoss: 0.39
+# OceanGCNLSTM   AvgLoss: 0.34
+# OceanGCN       AvgLoss: 0.39
+# OceanAttention AvgLoss: 0.44
 
 def evaluate(display=True):
     train_loader, validation_loader     = getDataset(eval=True)

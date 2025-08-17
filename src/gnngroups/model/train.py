@@ -1,6 +1,7 @@
 import torch
 import torch.optim as optim
 import json
+import traceback
 from tqdm import tqdm
 from gnngroups.utils import *
 from gnngroups.dataset import *
@@ -117,7 +118,8 @@ def train():
                 print("New best val loss, model saved")
 
             print()
-    except:
+    except Exception as e:
+        traceback.print_exc()
         print("ENDED")
 
     

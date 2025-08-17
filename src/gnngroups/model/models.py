@@ -654,103 +654,102 @@ def getModel(eval=False):
     return model
 
 if __name__ == '__main__':
+    pass
+    # nnodes = dataset_cfg["nodes"]
+    # timesteps = dataset_cfg["timesteps"]
+    # nhops = dataset_cfg["hops"]
 
-    nnodes = dataset_cfg["nodes"]
-    timesteps = dataset_cfg["timesteps"]
-    nhops = dataset_cfg["hops"]
+    # pos_path = dataset_cfg["pos_path"]
+    # dataset = oceanDataset(pos_path=pos_path)
 
-    pos_path = dataset_cfg["pos_path"]
-    dataset = oceanDataset(pos_path=pos_path)
+    # batch_size = training_cfg["batch_size"]
+    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    batch_size = training_cfg["batch_size"]
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    # model = getModel(eval=False)
 
-    model = getModel(eval=False)
+    # for batch_idx, batch in enumerate(dataloader):
+    #     global_positions_t_n_xy = batch[0].squeeze()
+    #     positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy = genAnchors(global_positions_t_n_xy)
+    #     # print(positions_t_n_xy.shape)
+    #     # print(Xhat_t_n_n.shape)
+    #     # print(A_t_n_n.shape)
+    #     # print(anchor_pos_t_n_xy.shape)
 
-    for batch_idx, batch in enumerate(dataloader):
-        global_positions_t_n_xy = batch[0].squeeze()
-        positions_t_n_xy, Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy = genAnchors(global_positions_t_n_xy)
-        # print(positions_t_n_xy.shape)
-        # print(Xhat_t_n_n.shape)
-        # print(A_t_n_n.shape)
-        # print(anchor_pos_t_n_xy.shape)
+    #     model_out = model(Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy)
+    #     print(model_out.shape)
+    #     exit()
 
-        model_out = model(Xhat_t_n_n, A_t_n_n, anchor_pos_t_n_xy)
-        print(model_out.shape)
-        exit()
-
-        for ts in tqdm(range(timesteps-1)):
-            ping_xy = positions_t_n_xy[ts, ping_init_b]
-            pong_xy = positions_t_n_xy[ts, pong_init_b]
-            pos_subnet_sn_xy, adj_subnet_sn_sn, mask_indices_n_global = getSubnet(positions_t_n_xy, 
-                      n_hop_adjacency_t_h_n_n,
-                      nhops,
-                      current_egoidx,
-                      ts
-                      )
+    #     for ts in tqdm(range(timesteps-1)):
+    #         ping_xy = positions_t_n_xy[ts, ping_init_b]
+    #         pong_xy = positions_t_n_xy[ts, pong_init_b]
+    #         # pos_subnet_sn_xy, adj_subnet_sn_sn, mask_indices_n_global = getSubnet(positions_t_n_xy, 
+    #         #           n_hop_adjacency_t_h_n_n, #           nhops,
+    #         #           current_egoidx,
+    #         #           ts
+    #         #           )
             
-            model_out = model(pos_subnet_sn_xy, adj_subnet_sn_sn, ping_xy, pong_xy)
-            # model_out_global = mask_indices_n_global[model_out.item()]
-            idx = int(model_out.item())
-            model_out_global = mask_indices_n_global[idx]
-            t = step_animate(
-                screen,
-                colors,
-                t,
-                center_x,
-                center_y,
-                clock,
-                recrdr,
-                draw_queue_n_xyc,
-                once,
-                positions_t_n_xy,
-                n_hop_adjacency_t_h_n_n,
-                ego_idx=current_egoidx,
-                model_pick_i=model_out_global,
-                ping_i=ping_init_b,
-                pong_i=pong_init_b,
-                drawAll=True
+    #         model_out = model(pos_subnet_sn_xy, adj_subnet_sn_sn, ping_xy, pong_xy)
+    #         # model_out_global = mask_indices_n_global[model_out.item()]
+    #         idx = int(model_out.item())
+    #         model_out_global = mask_indices_n_global[idx]
+    #         t = step_animate(
+    #             screen,
+    #             colors,
+    #             t,
+    #             center_x,
+    #             center_y,
+    #             clock,
+    #             recrdr,
+    #             draw_queue_n_xyc,
+    #             once,
+    #             positions_t_n_xy,
+    #             n_hop_adjacency_t_h_n_n,
+    #             ego_idx=current_egoidx,
+    #             model_pick_i=model_out_global,
+    #             ping_i=ping_init_b,
+    #             pong_i=pong_init_b,
+    #             drawAll=True
 
-            )
-            current_egoidx=model_out_global.item()
-            if (model_out_global == pong_init_b):
-                ping_init_b = pong_init_b
-                ping_xy = pong_xy
+    #         )
+    #         current_egoidx=model_out_global.item()
+    #         if (model_out_global == pong_init_b):
+    #             ping_init_b = pong_init_b
+    #             ping_xy = pong_xy
                 
-                pong_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
-                pong_xy = positions_t_n_xy[ts, pong_init_b]
+    #             pong_init_b = torch.randint(0, nnodes, (batch_size,)).squeeze()
+    #             pong_xy = positions_t_n_xy[ts, pong_init_b]
 
-        recrdr.close()
-        print("awwws")
-        exit()
+    #     recrdr.close()
+    #     print("awwws")
+    #     exit()
 
-        # model_out = model(batch, 0, 0, eval=True)
-        # print(model_out.shape)  # Should be [B, N, T, D]
-
-    
-    exit()
+    #     # model_out = model(batch, 0, 0, eval=True)
+    #     # print(model_out.shape)  # Should be [B, N, T, D]
 
     
-    dataset = GCNDataset(dataset_cfg["val_path"])
+    # exit()
+
+    
+    # dataset = GCNDataset(dataset_cfg["val_path"])
 
 
-    batch_size = training_cfg["batch_size"]
-    time_steps = dataset_cfg["timesteps"]
+    # batch_size = training_cfg["batch_size"]
+    # time_steps = dataset_cfg["timesteps"]
 
-    model = getModel(eval=False)
+    # model = getModel(eval=False)
 
-    # Create DataLoader
-    dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
+    # # Create DataLoader
+    # dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
 
-    for batch_idx, batch in enumerate(dataloader):
-        positions = batch['positions'] # batch, timestamp, node_amt, 3
-        ego_mask_batch = batch['ego_mask_batch']
-        big_batch_positions = batch['big_batch_positions']
-        big_batch_adjacency = batch['big_batch_adjacency']
-        trainOT_state = None
-        for time in range(time_steps):
-            emb, trainOT_state = model(batch, time, trainOT_state)
+    # for batch_idx, batch in enumerate(dataloader):
+    #     positions = batch['positions'] # batch, timestamp, node_amt, 3
+    #     ego_mask_batch = batch['ego_mask_batch']
+    #     big_batch_positions = batch['big_batch_positions']
+    #     big_batch_adjacency = batch['big_batch_adjacency']
+    #     trainOT_state = None
+    #     for time in range(time_steps):
+    #         emb, trainOT_state = model(batch, time, trainOT_state)
 
-            print(emb.shape)
+    #         print(emb.shape)
 
-            exit()
+    #         exit()

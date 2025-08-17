@@ -583,6 +583,7 @@ class oceanGCNAttention(nn.Module):
 
         self.hidden_dim    = int(config['model']['hidden_dim'])
         self.output_dim    = int(config['model']['output_dim'])
+        self.num_heads     = int(config['model']['num_heads'])
         self.extra_dims    = int(config['model']['extra_dim'])
 
         self.gcn1 = GCNConv(self.num_nodes + self.extra_dims,  self.hidden_dim)

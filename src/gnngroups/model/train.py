@@ -41,7 +41,7 @@ def batch_to_modelout(batch, model):
 
     return out_emb_t_n_o, positions_t_n_xy, A_t_n_n, anchor_indices_n
 
-def epoch_pass(loader, model, loss_func, optimizer, train=True):
+def epoch_pass(loader, model, loss_func, optimizer, train=True, anchor_only=True):
     global_total_loss   = 0
     total_loss          = 0
     batch_amt           = len(loader)
@@ -59,9 +59,15 @@ def epoch_pass(loader, model, loss_func, optimizer, train=True):
             global_loss = loss_func(out_emb_t_n_o, positions_t_n_xy.to(device))
             global_total_loss += global_loss
 
-            # Loss only on anchor positions
-            loss = loss_func(out_emb_t_n_o[:, anchor_indices_n], positions_t_n_xy[:, anchor_indices_n].to(device))
+            if anchor_only:
+                # Loss only on anchor positions
+                loss = loss_func(out_emb_t_n_o[:, anchor_indices_n], positions_t_n_xy[:, anchor_indices_n].to(device))
+            else:
+                # Loss on all positions
+                loss = loss_func(out_emb_t_n_o, positions_t_n_xy.to(device))
+
             total_loss += loss
+
 
             if train == True:
                 optimizer.zero_grad()
@@ -76,6 +82,7 @@ def train():
     lr              = training_cfg["learning_rate"]
     epochs          = training_cfg["epochs"]
     model_save      = training_cfg["model_save"]
+    anchor_only     = training_cfg["anchor_only"]
 
     train_loader, validation_loader     = getDataset()
     model                               = getModel(eval=False)
@@ -92,13 +99,13 @@ def train():
         for epoch in range(0, epochs):
             print(f"Epoch [{epoch}/{epochs}]:")
 
-            train_loss, train_global_loss = epoch_pass(train_loader, model, loss_func, optimizer)
+            train_loss, train_global_loss = epoch_pass(train_loader, model, loss_func, optimizer, train=True, anchor_only=anchor_only)
             hist_training_loss.append(train_loss.item())
             hist_training_global_loss.append(train_global_loss.item())
             print(f"Training Loss: {train_loss}")
             print(f"Global Training Loss: {train_global_loss}")
 
-            val_loss, val_global_loss = epoch_pass(validation_loader, model, loss_func, optimizer, train=False)
+            val_loss, val_global_loss = epoch_pass(validation_loader, model, loss_func, optimizer, train=False, anchor_only=anchor_only)
             hist_valid_loss.append(val_loss.item())
             hist_valid_global_loss.append(val_global_loss.item())
             print(f"Validation Loss: {val_loss}")
